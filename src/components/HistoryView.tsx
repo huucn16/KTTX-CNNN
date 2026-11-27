@@ -121,12 +121,23 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
         totalRight: 0,
         totalAsked: 0,
         highest: 0,
+        lowest: 0,
+        highestAttempt: null as QuizAttempt | null,
+        lowestAttempt: null as QuizAttempt | null,
         recent10: [] as QuizAttempt[],
       };
     }
 
+    let highestAttempt = source[0];
+    let lowestAttempt = source[0];
+    for (const item of source) {
+      if (item.score10 > highestAttempt.score10) highestAttempt = item;
+      if (item.score10 < lowestAttempt.score10) lowestAttempt = item;
+    }
+
     const scores = source.map((a) => a.score10);
-    const highest = Math.max(...scores);
+    const highest = highestAttempt.score10;
+    const lowest = lowestAttempt.score10;
     const avg = scores.reduce((s, v) => s + v, 0) / scores.length;
     const totalRight = source.reduce((acc, a) => acc + a.correctCount, 0);
     const totalAsked = source.reduce((acc, a) => acc + a.totalCount, 0);
@@ -140,6 +151,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
       totalRight,
       totalAsked,
       highest,
+      lowest,
+      highestAttempt,
+      lowestAttempt,
       recent10,
     };
   }, [filteredAttempts]);
@@ -247,7 +261,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           ) : (
             <div className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-900">
               <CloudCheck className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />
-              <span>{syncLoading ? 'Đang tải bảng điểm...' : 'Đồng bộ tự động'}</span>
+              <span>
+                {syncLoading ? 'Đang tải bảng điểm...' : 'Cập nhật theo thời gian thật'}
+              </span>
             </div>
           )}
 
@@ -359,8 +375,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
         </div>
       )}
 
-      {/* 3 KPI Cards */}
-      <section aria-label="Thống kê học tập" className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      {/* 5 KPI Cards */}
+      <section
+        aria-label="Thống kê học tập"
+        className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5"
+      >
         <div className="rounded-xl border border-slate-200 bg-white p-5">
           <p className="text-xs font-medium text-slate-500">
             {viewFilter === 'saved' ? 'Bài thi đã lưu' : 'Bài đã hoàn thành'}
@@ -371,16 +390,48 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           <p className="mt-1 text-xs text-slate-500">
             {viewFilter === 'saved'
               ? 'Lưu trữ lâu dài hồ sơ bài làm'
-              : 'Gồm bài làm đồng bộ từ các máy'}
+              : 'Đồng bộ theo thời gian thật'}
           </p>
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white p-5">
           <p className="text-xs font-medium text-slate-500">Điểm trung bình</p>
-          <p className="mt-2 font-mono-tabular text-2xl font-semibold text-emerald-800">
+          <p className="mt-2 font-mono-tabular text-2xl font-semibold text-slate-900">
             {summary.avgScoreText}
           </p>
           <p className="mt-1 text-xs text-slate-500">Thang điểm 10 chuẩn</p>
+        </div>
+
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-5">
+          <p className="text-xs font-medium text-emerald-900">Điểm cao nhất</p>
+          <p className="mt-2 font-mono-tabular text-2xl font-bold text-emerald-800">
+            {summary.totalAttempts > 0 ? `${summary.highest.toFixed(1)} / 10` : '—'}
+          </p>
+          <p className="mt-1 truncate text-xs text-slate-600">
+            {summary.highestAttempt
+              ? `${summary.highestAttempt.studentName || 'Học sinh'}${
+                  summary.highestAttempt.studentClass
+                    ? ` · Lớp ${summary.highestAttempt.studentClass}`
+                    : ''
+                }`
+              : 'Chưa có bài nộp'}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-rose-200 bg-rose-50/40 p-5">
+          <p className="text-xs font-medium text-rose-900">Điểm thấp nhất</p>
+          <p className="mt-2 font-mono-tabular text-2xl font-bold text-rose-700">
+            {summary.totalAttempts > 0 ? `${summary.lowest.toFixed(1)} / 10` : '—'}
+          </p>
+          <p className="mt-1 truncate text-xs text-slate-600">
+            {summary.lowestAttempt
+              ? `${summary.lowestAttempt.studentName || 'Học sinh'}${
+                  summary.lowestAttempt.studentClass
+                    ? ` · Lớp ${summary.lowestAttempt.studentClass}`
+                    : ''
+                }`
+              : 'Chưa có bài nộp'}
+          </p>
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white p-5">
@@ -417,66 +468,54 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
         </section>
       ) : (
         <>
-          {/* Highest Score + Score Bar Chart */}
-          <section className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-            <div className="lg:col-span-4 flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-6">
+          {/* Score Bar Chart */}
+          <section className="rounded-2xl border border-slate-200 bg-white p-6">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
               <div>
-                <p className="text-xs font-medium text-slate-500">Điểm cao nhất đạt được</p>
-                <p className="mt-2 font-mono-tabular text-4xl font-bold text-slate-900">
-                  {summary.totalAttempts > 0 ? `${summary.highest.toFixed(1)} / 10` : '—'}
-                </p>
-                <p className="mt-2 text-sm font-medium text-emerald-800">
-                  Xếp loại: {summary.totalAttempts > 0 ? getGradeRank(summary.highest).label : '—'}
-                </p>
-              </div>
-              <p className="mt-6 border-t border-slate-100 pt-4 text-xs text-slate-500">
-                Nhấn vào cột bất kỳ trên biểu đồ để xem lại chi tiết đề và lời giải của lượt làm bài đó.
-              </p>
-            </div>
-
-            <div className="lg:col-span-8 rounded-2xl border border-slate-200 bg-white p-6">
-              <div className="flex items-center justify-between mb-4">
                 <h2 className="text-sm font-semibold text-slate-900">
                   Biểu đồ điểm 10 lượt nộp bài gần nhất
                 </h2>
-                <span className="text-xs text-slate-500">Thang điểm 0 – 10</span>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Nhấn vào cột bất kỳ để xem lại chi tiết bài làm của học sinh đó.
+                </p>
               </div>
-
-              {summary.recent10.length === 0 ? (
-                <div className="flex h-44 items-center justify-center border-b border-slate-200 text-xs text-slate-500">
-                  Không có bài làm phù hợp bộ lọc hiện tại.
-                </div>
-              ) : (
-                <div className="flex h-44 items-end gap-3 border-b border-slate-200 pt-6 pb-2">
-                  {summary.recent10.map((a, i) => {
-                    const heightPct = Math.max(6, Math.round((a.score10 / 10) * 100));
-                    return (
-                      <div key={a.id} className="flex flex-1 flex-col items-center gap-1.5 h-full justify-end">
-                        <span className="font-mono-tabular text-xs font-semibold text-slate-700">
-                          {a.score10.toFixed(1)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => onViewAttempt(a)}
-                          title={`${a.studentName ? `${a.studentName} · ` : ''}${a.title} - ${a.score10.toFixed(1)} điểm`}
-                          style={{ height: `${heightPct}%` }}
-                          className={`w-full max-w-[36px] rounded-t-md transition-opacity hover:opacity-85 ${
-                            a.score10 >= 8
-                              ? 'bg-emerald-700'
-                              : a.score10 >= 5
-                              ? 'bg-slate-700'
-                              : 'bg-rose-600'
-                          }`}
-                        />
-                        <span className="font-mono-tabular text-[11px] text-slate-400">
-                          #{i + 1}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+              <span className="text-xs text-slate-500">Thang điểm 0 – 10</span>
             </div>
+
+            {summary.recent10.length === 0 ? (
+              <div className="flex h-44 items-center justify-center border-b border-slate-200 text-xs text-slate-500">
+                Không có bài làm phù hợp bộ lọc hiện tại.
+              </div>
+            ) : (
+              <div className="flex h-44 items-end gap-3 border-b border-slate-200 pt-6 pb-2">
+                {summary.recent10.map((a, i) => {
+                  const heightPct = Math.max(6, Math.round((a.score10 / 10) * 100));
+                  return (
+                    <div key={a.id} className="flex flex-1 flex-col items-center gap-1.5 h-full justify-end">
+                      <span className="font-mono-tabular text-xs font-semibold text-slate-700">
+                        {a.score10.toFixed(1)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onViewAttempt(a)}
+                        title={`${a.studentName ? `${a.studentName} · ` : ''}${a.title} - ${a.score10.toFixed(1)} điểm`}
+                        style={{ height: `${heightPct}%` }}
+                        className={`w-full max-w-[44px] rounded-t-md transition-opacity hover:opacity-85 ${
+                          a.score10 >= 8
+                            ? 'bg-emerald-700'
+                            : a.score10 >= 5
+                            ? 'bg-slate-700'
+                            : 'bg-rose-600'
+                        }`}
+                      />
+                      <span className="font-mono-tabular text-[11px] text-slate-400">
+                        #{i + 1}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </section>
 
           {/* Filter + Archive/Export Toolbar */}

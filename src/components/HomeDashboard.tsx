@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   BookOpen,
+  CheckCircle2,
   GraduationCap,
   Play,
   QrCode,
@@ -16,12 +17,14 @@ import {
   ShuffleMode,
   TopicInfo,
 } from '../types/quiz';
+import { normalizeIdentityKey } from '../utils/storage';
 import { QrAssignModal, QrShareTarget } from './QrAssignModal';
 
 interface HomeDashboardProps {
   questions: Question[];
   studentName: string;
   studentClass: string;
+  completedTimedTitles?: string[];
   onStudentNameChange: (name: string) => void;
   onStudentClassChange: (studentClass: string) => void;
   onStartQuiz: (config: QuizConfig) => void;
@@ -59,6 +62,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   questions,
   studentName,
   studentClass,
+  completedTimedTitles = [],
   onStudentNameChange,
   onStudentClassChange,
   onStartQuiz,
@@ -66,6 +70,15 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   const [selectedGrade, setSelectedGrade] = useState<GradeLevel>('Công nghệ 10');
   const [attemptedStart, setAttemptedStart] = useState(false);
   const [qrTarget, setQrTarget] = useState<QrShareTarget | null>(null);
+
+  const completedTitleSet = useMemo(
+    () => new Set(completedTimedTitles.map((t) => normalizeIdentityKey(t))),
+    [completedTimedTitles]
+  );
+
+  const isQuick15MinDone = completedTitleSet.has(
+    normalizeIdentityKey(`Kiểm tra 15 phút · Tổng hợp ${selectedGrade}`)
+  );
 
   const nameInputRef = useRef<HTMLInputElement>(null);
   const classInputRef = useRef<HTMLInputElement>(null);
@@ -312,10 +325,18 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                 <button
                   type="button"
                   onClick={() => handleStartQuick15Min('ca-hai')}
-                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white whitespace-nowrap hover:bg-emerald-800 transition-colors"
+                  className={`flex-1 inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold whitespace-nowrap transition-colors ${
+                    isQuick15MinDone
+                      ? 'border border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
+                      : 'bg-emerald-700 text-white hover:bg-emerald-800'
+                  }`}
                 >
-                  <Play className="h-4 w-4 shrink-0" />
-                  <span>Làm đề 15 phút</span>
+                  {isQuick15MinDone ? (
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-700" />
+                  ) : (
+                    <Play className="h-4 w-4 shrink-0" />
+                  )}
+                  <span>{isQuick15MinDone ? 'Đã làm đề 15 phút' : 'Làm đề 15 phút'}</span>
                 </button>
                 <button
                   type="button"
@@ -452,59 +473,89 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
 
                 <div className="space-y-3 border-t border-slate-100 pt-3.5">
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                    {examsForTopic.map(({ examNum, count }) => (
-                      <div
-                        key={examNum}
-                        className="flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white"
-                      >
-                        <button
-                          type="button"
-                          disabled={count === 0}
-                          onClick={() => handleStartChapterExam(topic, examNum, 'ca-hai')}
-                          title={`Làm ${topic.code} · Đề ${examNum} (${count} câu · 15 phút)`}
-                          className="inline-flex min-h-[38px] items-center justify-center bg-slate-50/80 px-2 py-2 text-xs font-semibold text-slate-800 whitespace-nowrap shrink-0 hover:bg-emerald-700 hover:text-white focus-visible:outline-2 focus-visible:outline-emerald-700 disabled:opacity-40 transition-colors"
+                    {examsForTopic.map(({ examNum, count }) => {
+                      const examTitle = `${topic.shortTitle} · Đề ${examNum}`;
+                      const isDone = completedTitleSet.has(normalizeIdentityKey(examTitle));
+                      return (
+                        <div
+                          key={examNum}
+                          className={`flex flex-col overflow-hidden rounded-lg border bg-white ${
+                            isDone ? 'border-emerald-300' : 'border-slate-200'
+                          }`}
                         >
-                          Đề {examNum}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={count === 0}
-                          onClick={() => handleOpenChapterExamQr(topic, examNum)}
-                          title={`Lấy mã QR giao ${topic.code} · Đề ${examNum} (có tùy chọn trộn đề)`}
-                          aria-label={`Mã QR giao ${topic.code} Đề ${examNum}`}
-                          className="inline-flex min-h-[30px] items-center justify-center gap-1 border-t border-slate-200 bg-white px-2 py-1.5 text-[11px] font-medium text-emerald-800 whitespace-nowrap shrink-0 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-emerald-700 disabled:opacity-40 transition-colors"
-                        >
-                          <QrCode className="h-3 w-3 shrink-0" />
-                          <span>Mã QR</span>
-                        </button>
-                      </div>
-                    ))}
+                          <button
+                            type="button"
+                            disabled={count === 0}
+                            onClick={() => handleStartChapterExam(topic, examNum, 'ca-hai')}
+                            title={
+                              isDone
+                                ? `${topic.code} · Đề ${examNum} (Bạn đã hoàn thành đề này · bấm để xem lại)`
+                                : `Làm ${topic.code} · Đề ${examNum} (${count} câu · 15 phút)`
+                            }
+                            className={`inline-flex min-h-[38px] items-center justify-center gap-1 px-2 py-2 text-xs font-semibold whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-emerald-700 disabled:opacity-40 transition-colors ${
+                              isDone
+                                ? 'bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
+                                : 'bg-slate-50/80 text-slate-800 hover:bg-emerald-700 hover:text-white'
+                            }`}
+                          >
+                            {isDone && (
+                              <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-700" aria-hidden="true" />
+                            )}
+                            <span>Đề {examNum}</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={count === 0}
+                            onClick={() => handleOpenChapterExamQr(topic, examNum)}
+                            title={`Lấy mã QR giao ${topic.code} · Đề ${examNum} (có tùy chọn trộn đề)`}
+                            aria-label={`Mã QR giao ${topic.code} Đề ${examNum}`}
+                            className="inline-flex min-h-[30px] items-center justify-center gap-1 border-t border-slate-200 bg-white px-2 py-1.5 text-[11px] font-medium text-emerald-800 whitespace-nowrap shrink-0 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-emerald-700 disabled:opacity-40 transition-colors"
+                          >
+                            <QrCode className="h-3 w-3 shrink-0" />
+                            <span>Mã QR</span>
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
 
                   {/* Mixed Random Exam Bar for the whole Chapter */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200/80 bg-emerald-50/50 px-3 py-2">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-950">
-                      <Shuffle className="h-3.5 w-3.5 text-emerald-700 shrink-0" />
-                      <span>Trộn ngẫu nhiên 10/50 câu cả chương</span>
-                    </span>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => handleStartChapterMixedExam(topic, 'ca-hai')}
-                        className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-800 hover:bg-slate-50 transition-colors"
-                      >
-                        Làm đề trộn
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenChapterMixedQr(topic)}
-                        className="inline-flex items-center gap-1 rounded-md bg-emerald-700 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-emerald-800 transition-colors"
-                      >
-                        <QrCode className="h-3 w-3 shrink-0" />
-                        <span>Giao QR trộn đề</span>
-                      </button>
-                    </div>
-                  </div>
+                  {(() => {
+                    const mixedTitle = `${topic.shortTitle} · Đề trộn ngẫu nhiên`;
+                    const isMixDone = completedTitleSet.has(normalizeIdentityKey(mixedTitle));
+                    return (
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200/80 bg-emerald-50/50 px-3 py-2">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-950">
+                          <Shuffle className="h-3.5 w-3.5 text-emerald-700 shrink-0" />
+                          <span>Trộn ngẫu nhiên 10/50 câu cả chương</span>
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleStartChapterMixedExam(topic, 'ca-hai')}
+                            className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                              isMixDone
+                                ? 'border-emerald-300 bg-emerald-100 text-emerald-900 hover:bg-emerald-200/70'
+                                : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'
+                            }`}
+                          >
+                            {isMixDone && (
+                              <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-700" aria-hidden="true" />
+                            )}
+                            <span>{isMixDone ? 'Đã làm đề trộn' : 'Làm đề trộn'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenChapterMixedQr(topic)}
+                            className="inline-flex items-center gap-1 rounded-md bg-emerald-700 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-emerald-800 transition-colors"
+                          >
+                            <QrCode className="h-3 w-3 shrink-0" />
+                            <span>Giao QR trộn đề</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </article>
             );

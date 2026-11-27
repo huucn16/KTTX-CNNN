@@ -1,10 +1,23 @@
 import { DifficultyLevel, Question, QuizAttempt } from '../types/quiz';
 
 const ATTEMPTS_KEY = 'agri_quiz_attempts_v1';
+const TIMED_REGISTRY_KEY = 'agri_quiz_timed_registry_v1';
 const SAVED_EXAMS_KEY = 'agri_quiz_saved_exams_v1';
 const CUSTOM_QUESTIONS_KEY = 'agri_quiz_custom_questions_v1';
 const STUDENT_NAME_KEY = 'agri_quiz_student_name_v1';
 const STUDENT_CLASS_KEY = 'agri_quiz_student_class_v1';
+
+export function normalizeIdentityKey(value: string): string {
+  return (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+export function buildTimedAttemptKey(
+  studentName: string,
+  studentClass: string,
+  title: string
+): string {
+  return `${normalizeIdentityKey(studentName)}||${normalizeIdentityKey(studentClass)}||${normalizeIdentityKey(title)}`;
+}
 
 export function loadAttempts(): QuizAttempt[] {
   try {
@@ -50,6 +63,70 @@ export function clearAttempts(): void {
   } catch {
     // Ignore
   }
+}
+
+export function loadTimedExamRegistry(): QuizAttempt[] {
+  try {
+    const raw = localStorage.getItem(TIMED_REGISTRY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function recordTimedExamCompletion(attempt: QuizAttempt): QuizAttempt[] {
+  if (attempt.mode !== 'timed') return loadTimedExamRegistry();
+  const current = loadTimedExamRegistry();
+  const targetKey = buildTimedAttemptKey(
+    attempt.studentName || '',
+    attempt.studentClass || '',
+    attempt.title
+  );
+  const filtered = current.filter(
+    (item) =>
+      item.id !== attempt.id &&
+      buildTimedAttemptKey(item.studentName || '', item.studentClass || '', item.title) !== targetKey
+  );
+  const updated = [attempt, ...filtered].slice(0, 200);
+  try {
+    localStorage.setItem(TIMED_REGISTRY_KEY, JSON.stringify(updated));
+  } catch {
+    // Ignore storage quota errors
+  }
+  return updated;
+}
+
+export function updateTimedExamSyncStatus(
+  attemptId: string,
+  syncStatus: 'synced' | 'pending' | 'error'
+): QuizAttempt[] {
+  const current = loadTimedExamRegistry();
+  const updated = current.map((item) =>
+    item.id === attemptId ? { ...item, syncStatus } : item
+  );
+  try {
+    localStorage.setItem(TIMED_REGISTRY_KEY, JSON.stringify(updated));
+  } catch {
+    // Ignore storage quota errors
+  }
+  return updated;
+}
+
+export function pruneDeletedSyncedFromRegistry(activeSyncedIds: Set<string>): QuizAttempt[] {
+  const current = loadTimedExamRegistry();
+  const updated = current.filter(
+    (item) => item.syncStatus !== 'synced' || activeSyncedIds.has(item.id)
+  );
+  if (updated.length !== current.length) {
+    try {
+      localStorage.setItem(TIMED_REGISTRY_KEY, JSON.stringify(updated));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }
+  return updated;
 }
 
 export function loadLocalSavedExams(): QuizAttempt[] {

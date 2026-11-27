@@ -4,6 +4,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   limit,
   onSnapshot,
   orderBy,
@@ -23,6 +24,7 @@ import {
   SubmitReason,
   TopicId,
 } from '../types/quiz';
+import { buildTimedAttemptKey } from '../utils/storage';
 
 export const PRIMARY_TEACHER_EMAIL = 'huucn16@gmail.com';
 const PENDING_SYNC_KEY = 'agri_quiz_pending_sync_v1';
@@ -249,6 +251,35 @@ export function subscribeTeacherSubmissions(
       }
     }
   );
+}
+
+export async function findExistingTimedSubmission(
+  studentName: string,
+  studentClass: string,
+  title: string,
+  builtinQuestions: Question[]
+): Promise<QuizAttempt | null> {
+  const targetKey = buildTimedAttemptKey(studentName, studentClass, title);
+  const path = 'submissions';
+  try {
+    const q = query(collection(db, path), orderBy('createdAt', 'desc'), limit(500));
+    const snapshot = await getDocs(q);
+    for (const d of snapshot.docs) {
+      const data = d.data() as Record<string, unknown>;
+      if (data.mode !== 'timed') continue;
+      const rowKey = buildTimedAttemptKey(
+        typeof data.studentName === 'string' ? data.studentName : '',
+        typeof data.studentClass === 'string' ? data.studentClass : '',
+        typeof data.title === 'string' ? data.title : ''
+      );
+      if (rowKey === targetKey) {
+        return submissionDocToQuizAttempt(data, builtinQuestions);
+      }
+    }
+    return null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+  }
 }
 
 export async function deleteTeacherSubmission(submissionId: string): Promise<void> {

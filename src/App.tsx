@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
-import { AlertCircle, GraduationCap, UserCheck, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, GraduationCap, UserCheck, X } from 'lucide-react';
 import { BUILTIN_QUESTIONS, TOPICS } from './data/questions';
 import { auth, googleProvider } from './firebase';
 import { Header } from './components/Header';
@@ -16,6 +16,7 @@ import {
   dequeuePendingAttempt,
   doesExamControlMatchClass,
   enqueuePendingAttempt,
+  findExistingTimedSubmission,
   loadPendingAttempts,
   reopenExamState,
   saveExamToCloudArchive,
@@ -37,11 +38,16 @@ import {
   TopicId,
 } from './types/quiz';
 import {
+  buildTimedAttemptKey,
   clearAttempts,
   loadAttempts,
   loadLocalSavedExams,
   loadStudentClass,
   loadStudentName,
+  loadTimedExamRegistry,
+  normalizeIdentityKey,
+  pruneDeletedSyncedFromRegistry,
+  recordTimedExamCompletion,
   removeLocalSavedExam,
   saveAttempt,
   saveLocalExam,
@@ -49,6 +55,7 @@ import {
   saveStudentName,
   shuffleArray,
   updateAttemptSyncStatus,
+  updateTimedExamSyncStatus,
 } from './utils/storage';
 
 function shuffleQuestionOptions(q: Question): Question {
@@ -131,14 +138,19 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [isTeacherAuthorized, setIsTeacherAuthorized] = useState(false);
   const [syncedAttempts, setSyncedAttempts] = useState<QuizAttempt[]>([]);
+  const [hasLoadedSynced, setHasLoadedSynced] = useState(false);
+  const [timedRegistry, setTimedRegistry] = useState<QuizAttempt[]>(() => loadTimedExamRegistry());
   const [cloudSavedExams, setCloudSavedExams] = useState<QuizAttempt[]>([]);
   const [localSavedExams, setLocalSavedExams] = useState<QuizAttempt[]>(() =>
     loadLocalSavedExams()
   );
   const [syncLoading, setSyncLoading] = useState(false);
+  const [syncReconnectKey, setSyncReconnectKey] = useState(0);
   const [teacherError, setTeacherError] = useState('');
   const [examControl, setExamControl] = useState<ExamControlState | null>(null);
   const [examEndedNotice, setExamEndedNotice] = useState<string | null>(null);
+  const [duplicateAttemptNotice, setDuplicateAttemptNotice] = useState<QuizAttempt | null>(null);
+  const launchingRef = useRef(false);
 
   const syncSingleAttempt = useCallback(async (attempt: QuizAttempt) => {
     try {
@@ -146,6 +158,7 @@ export default function App() {
       dequeuePendingAttempt(attempt.id);
       const updatedList = updateAttemptSyncStatus(attempt.id, 'synced');
       setAttempts(updatedList);
+      setTimedRegistry(updateTimedExamSyncStatus(attempt.id, 'synced'));
       setViewingAttempt((prev) =>
         prev && prev.id === attempt.id ? { ...prev, syncStatus: 'synced' } : prev
       );
@@ -153,6 +166,7 @@ export default function App() {
       enqueuePendingAttempt(attempt);
       const updatedList = updateAttemptSyncStatus(attempt.id, 'error');
       setAttempts(updatedList);
+      setTimedRegistry(updateTimedExamSyncStatus(attempt.id, 'error'));
       setViewingAttempt((prev) =>
         prev && prev.id === attempt.id ? { ...prev, syncStatus: 'error' } : prev
       );
@@ -201,37 +215,69 @@ export default function App() {
     };
   }, []);
 
-  // Subscribe to synced student submissions & saved exams in Firestore without login
+  // Subscribe to real-time synced student submissions & saved exams in Firestore
   useEffect(() => {
     if (!authReady) {
       return;
     }
+    let active = true;
+    let retryTimer: number | null = null;
+
+    const scheduleReconnect = () => {
+      if (!active || retryTimer !== null) return;
+      retryTimer = window.setTimeout(() => {
+        if (active) {
+          setSyncReconnectKey((k) => k + 1);
+        }
+      }, 4000);
+    };
+
+    const handleOnline = () => {
+      if (active) {
+        setSyncReconnectKey((k) => k + 1);
+      }
+    };
+    window.addEventListener('online', handleOnline);
+
     setSyncLoading(true);
     const unsubSubmissions = subscribeTeacherSubmissions(
       BUILTIN_QUESTIONS,
       (list) => {
+        if (!active) return;
         setSyncedAttempts(list);
+        setHasLoadedSynced(true);
+        setTimedRegistry(pruneDeletedSyncedFromRegistry(new Set(list.map((a) => a.id))));
         setSyncLoading(false);
+        setTeacherError('');
       },
       () => {
+        if (!active) return;
         setSyncLoading(false);
-        setTeacherError('Không thể tải dữ liệu bảng điểm đồng bộ. Vui lòng thử lại.');
+        setTeacherError('Kết nối đồng bộ tạm gián đoạn, hệ thống đang tự kết nối lại...');
+        scheduleReconnect();
       }
     );
     const unsubSaved = subscribeSavedExams(
       BUILTIN_QUESTIONS,
       (list) => {
+        if (!active) return;
         setCloudSavedExams(list);
       },
       () => {
-        setTeacherError('Không thể tải kho bài thi đã lưu trên hệ thống.');
+        if (!active) return;
+        scheduleReconnect();
       }
     );
     return () => {
+      active = false;
+      if (retryTimer !== null) {
+        window.clearTimeout(retryTimer);
+      }
+      window.removeEventListener('online', handleOnline);
       unsubSubmissions();
       unsubSaved();
     };
-  }, [authReady]);
+  }, [authReady, syncReconnectKey]);
 
   const mergedAttempts = useMemo(() => {
     const byId = new Map<string, QuizAttempt>();
@@ -261,6 +307,75 @@ export default function App() {
   }, [localSavedExams, cloudSavedExams]);
 
   const syncedAttemptIds = useMemo(() => syncedAttempts.map((a) => a.id), [syncedAttempts]);
+  const syncedIdSet = useMemo(() => new Set(syncedAttemptIds), [syncedAttemptIds]);
+
+  const findExistingTimedAttemptLocal = useCallback(
+    (name: string, cls: string, title: string): QuizAttempt | null => {
+      const targetKey = buildTimedAttemptKey(name, cls, title);
+      for (const item of syncedAttempts) {
+        if (
+          item.mode === 'timed' &&
+          buildTimedAttemptKey(item.studentName || '', item.studentClass || '', item.title) ===
+            targetKey
+        ) {
+          return item;
+        }
+      }
+      for (const item of timedRegistry) {
+        if (hasLoadedSynced && item.syncStatus === 'synced' && !syncedIdSet.has(item.id)) {
+          continue;
+        }
+        if (
+          item.mode === 'timed' &&
+          buildTimedAttemptKey(item.studentName || '', item.studentClass || '', item.title) ===
+            targetKey
+        ) {
+          return item;
+        }
+      }
+      for (const item of attempts) {
+        if (hasLoadedSynced && item.syncStatus === 'synced' && !syncedIdSet.has(item.id)) {
+          continue;
+        }
+        if (
+          item.mode === 'timed' &&
+          buildTimedAttemptKey(item.studentName || '', item.studentClass || '', item.title) ===
+            targetKey
+        ) {
+          return item;
+        }
+      }
+      return null;
+    },
+    [syncedAttempts, timedRegistry, attempts, hasLoadedSynced, syncedIdSet]
+  );
+
+  const completedTimedTitles = useMemo(() => {
+    const normName = normalizeIdentityKey(studentName);
+    const normClass = normalizeIdentityKey(studentClass);
+    if (!normName || !normClass) return [];
+
+    const titles = new Set<string>();
+    const collect = (list: QuizAttempt[], respectCloudPrune: boolean) => {
+      for (const item of list) {
+        if (item.mode !== 'timed') continue;
+        if (respectCloudPrune && hasLoadedSynced && item.syncStatus === 'synced' && !syncedIdSet.has(item.id)) {
+          continue;
+        }
+        if (
+          normalizeIdentityKey(item.studentName || '') === normName &&
+          normalizeIdentityKey(item.studentClass || '') === normClass
+        ) {
+          titles.add(item.title);
+        }
+      }
+    };
+
+    collect(syncedAttempts, false);
+    collect(timedRegistry, true);
+    collect(attempts, true);
+    return Array.from(titles);
+  }, [studentName, studentClass, syncedAttempts, timedRegistry, attempts, hasLoadedSynced, syncedIdSet]);
 
   const handleTeacherSignIn = async (): Promise<boolean> => {
     setTeacherError('');
@@ -452,72 +567,107 @@ export default function App() {
     }
   }, []);
 
-  const launchQuizNow = (config: QuizConfig) => {
-    if (config.mode === 'timed' && doesExamControlMatchClass(examControl, config.studentClass)) {
-      setExamEndedNotice(
-        examControl?.note ||
-          'Giáo viên đã kết thúc bài thi này trước giờ quy định. Vui lòng chờ giáo viên mở lại lượt thi mới.'
-      );
-      return;
-    }
+  const launchQuizNow = async (config: QuizConfig) => {
+    if (launchingRef.current) return;
+    launchingRef.current = true;
 
-    const difficultyRank: Record<Question['difficulty'], number> = {
-      'nhan-biet': 0,
-      'thong-hieu': 1,
-      'van-dung': 2,
-    };
+    try {
+      if (config.mode === 'timed' && doesExamControlMatchClass(examControl, config.studentClass)) {
+        setExamEndedNotice(
+          examControl?.note ||
+            'Giáo viên đã kết thúc bài thi này trước giờ quy định. Vui lòng chờ giáo viên mở lại lượt thi mới.'
+        );
+        return;
+      }
 
-    let selectedRaw: Question[] = [];
+      if (config.mode === 'timed') {
+        const localExisting = findExistingTimedAttemptLocal(
+          config.studentName,
+          config.studentClass,
+          config.title
+        );
+        if (localExisting) {
+          setDuplicateAttemptNotice(localExisting);
+          return;
+        }
 
-    if (config.questionIds && config.questionIds.length > 0) {
-      const idSet = new Set(config.questionIds);
-      selectedRaw = BUILTIN_QUESTIONS.filter((q) => idSet.has(q.id)).sort(
-        (a, b) => difficultyRank[a.difficulty] - difficultyRank[b.difficulty]
-      );
-    } else if (config.examNumber) {
-      selectedRaw = BUILTIN_QUESTIONS.filter((q) => {
-        const gradeOk = !config.grade || config.grade === 'all' || q.grade === config.grade;
-        const topicOk = config.topicIds.includes(q.topicId);
-        const examOk = q.examNumber === config.examNumber;
-        return gradeOk && topicOk && examOk;
-      }).sort((a, b) => difficultyRank[a.difficulty] - difficultyRank[b.difficulty]);
-    } else if (config.isBalancedMix) {
-      const pool = BUILTIN_QUESTIONS.filter((q) => {
-        const gradeOk = !config.grade || config.grade === 'all' || q.grade === config.grade;
-        const topicOk = config.topicIds.includes(q.topicId);
-        return gradeOk && topicOk;
+        try {
+          const cloudExisting = await findExistingTimedSubmission(
+            config.studentName,
+            config.studentClass,
+            config.title,
+            BUILTIN_QUESTIONS
+          );
+          if (cloudExisting) {
+            setTimedRegistry(recordTimedExamCompletion(cloudExisting));
+            setDuplicateAttemptNotice(cloudExisting);
+            return;
+          }
+        } catch {
+          // Allow launch if offline and no local duplicate exists
+        }
+      }
+
+      const difficultyRank: Record<Question['difficulty'], number> = {
+        'nhan-biet': 0,
+        'thong-hieu': 1,
+        'van-dung': 2,
+      };
+
+      let selectedRaw: Question[] = [];
+
+      if (config.questionIds && config.questionIds.length > 0) {
+        const idSet = new Set(config.questionIds);
+        selectedRaw = BUILTIN_QUESTIONS.filter((q) => idSet.has(q.id)).sort(
+          (a, b) => difficultyRank[a.difficulty] - difficultyRank[b.difficulty]
+        );
+      } else if (config.examNumber) {
+        selectedRaw = BUILTIN_QUESTIONS.filter((q) => {
+          const gradeOk = !config.grade || config.grade === 'all' || q.grade === config.grade;
+          const topicOk = config.topicIds.includes(q.topicId);
+          const examOk = q.examNumber === config.examNumber;
+          return gradeOk && topicOk && examOk;
+        }).sort((a, b) => difficultyRank[a.difficulty] - difficultyRank[b.difficulty]);
+      } else if (config.isBalancedMix) {
+        const pool = BUILTIN_QUESTIONS.filter((q) => {
+          const gradeOk = !config.grade || config.grade === 'all' || q.grade === config.grade;
+          const topicOk = config.topicIds.includes(q.topicId);
+          return gradeOk && topicOk;
+        });
+        selectedRaw = pickBalanced10Questions(pool).sort(
+          (a, b) => difficultyRank[a.difficulty] - difficultyRank[b.difficulty]
+        );
+      } else {
+        const pool = BUILTIN_QUESTIONS.filter((q) => {
+          const gradeOk = !config.grade || config.grade === 'all' || q.grade === config.grade;
+          const topicOk = config.topicIds.includes(q.topicId);
+          const diffOk = config.difficulty === 'all' || q.difficulty === config.difficulty;
+          return gradeOk && topicOk && diffOk;
+        });
+        selectedRaw = shuffleArray(pool).slice(0, config.questionCount);
+      }
+
+      const shouldShuffleQuestions = config.shuffleQuestions !== false;
+      const shouldShuffleOptions = config.shuffleOptions !== false;
+
+      const orderedQuestions = shouldShuffleQuestions ? shuffleArray(selectedRaw) : selectedRaw;
+      const selected = shouldShuffleOptions
+        ? orderedQuestions.map(shuffleQuestionOptions)
+        : orderedQuestions;
+
+      if (selected.length === 0) return;
+
+      setLastConfig(config);
+      setActiveQuiz({
+        config,
+        questions: selected,
+        startedAt: new Date().toISOString(),
       });
-      selectedRaw = pickBalanced10Questions(pool).sort(
-        (a, b) => difficultyRank[a.difficulty] - difficultyRank[b.difficulty]
-      );
-    } else {
-      const pool = BUILTIN_QUESTIONS.filter((q) => {
-        const gradeOk = !config.grade || config.grade === 'all' || q.grade === config.grade;
-        const topicOk = config.topicIds.includes(q.topicId);
-        const diffOk = config.difficulty === 'all' || q.difficulty === config.difficulty;
-        return gradeOk && topicOk && diffOk;
-      });
-      selectedRaw = shuffleArray(pool).slice(0, config.questionCount);
+      setActiveView('quiz');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } finally {
+      launchingRef.current = false;
     }
-
-    const shouldShuffleQuestions = config.shuffleQuestions !== false;
-    const shouldShuffleOptions = config.shuffleOptions !== false;
-
-    const orderedQuestions = shouldShuffleQuestions ? shuffleArray(selectedRaw) : selectedRaw;
-    const selected = shouldShuffleOptions
-      ? orderedQuestions.map(shuffleQuestionOptions)
-      : orderedQuestions;
-
-    if (selected.length === 0) return;
-
-    setLastConfig(config);
-    setActiveQuiz({
-      config,
-      questions: selected,
-      startedAt: new Date().toISOString(),
-    });
-    setActiveView('quiz');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const launchWrongQuestionsNow = (
@@ -571,7 +721,7 @@ export default function App() {
       return;
     }
 
-    launchQuizNow({
+    void launchQuizNow({
       ...config,
       studentName: resolvedName,
       studentClass: resolvedClass,
@@ -635,7 +785,7 @@ export default function App() {
 
     if (!launch) return;
     if (launch.type === 'config') {
-      launchQuizNow({
+      void launchQuizNow({
         ...launch.config,
         studentName: trimmedName,
         studentClass: trimmedClass,
@@ -659,6 +809,22 @@ export default function App() {
     submitReason?: SubmitReason;
   }) => {
     if (!activeQuiz) return;
+
+    if (activeQuiz.config.mode === 'timed') {
+      const existing = findExistingTimedAttemptLocal(
+        activeQuiz.config.studentName,
+        activeQuiz.config.studentClass,
+        activeQuiz.config.title
+      );
+      if (existing) {
+        setActiveQuiz(null);
+        setViewingAttempt(existing);
+        setActiveView('result');
+        setDuplicateAttemptNotice(existing);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+    }
 
     const totalCount = activeQuiz.questions.length;
     const correctCount = activeQuiz.questions.reduce((acc, q) => {
@@ -692,6 +858,9 @@ export default function App() {
 
     const updated = saveAttempt(attempt);
     setAttempts(updated);
+    if (attempt.mode === 'timed') {
+      setTimedRegistry(recordTimedExamCompletion(attempt));
+    }
     setActiveQuiz(null);
     setViewingAttempt(attempt);
     setActiveView('result');
@@ -725,6 +894,7 @@ export default function App() {
             questions={BUILTIN_QUESTIONS}
             studentName={studentName}
             studentClass={studentClass}
+            completedTimedTitles={completedTimedTitles}
             onStudentNameChange={handleStudentNameChange}
             onStudentClassChange={handleStudentClassChange}
             onStartQuiz={startQuiz}
@@ -952,6 +1122,74 @@ export default function App() {
                 className="rounded-lg bg-emerald-700 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-800"
               >
                 Đã hiểu
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Single-Attempt Enforcement Dialog */}
+      {duplicateAttemptNotice && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="duplicate-attempt-title"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-emerald-300 bg-white p-6 shadow-xl">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" aria-hidden="true" />
+              <div className="space-y-2">
+                <h2
+                  id="duplicate-attempt-title"
+                  className="font-display text-lg font-bold text-slate-900"
+                >
+                  Bạn đã hoàn thành bài kiểm tra này
+                </h2>
+                <p className="text-sm leading-relaxed text-slate-700">
+                  Mỗi học sinh chỉ được làm bài kiểm tra này 1 lần. Hệ thống đã ghi nhận bài nộp
+                  của{' '}
+                  <span className="font-semibold text-slate-900">
+                    {duplicateAttemptNotice.studentName || 'Học sinh'}
+                  </span>
+                  {duplicateAttemptNotice.studentClass
+                    ? ` (Lớp ${duplicateAttemptNotice.studentClass})`
+                    : ''}{' '}
+                  cho đề{' '}
+                  <span className="font-semibold text-slate-900">
+                    {duplicateAttemptNotice.title}
+                  </span>
+                  .
+                </p>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs text-slate-700">
+                  Kết quả đã ghi nhận:{' '}
+                  <span className="font-mono-tabular font-bold text-emerald-800">
+                    {duplicateAttemptNotice.score10.toFixed(1)} / 10
+                  </span>{' '}
+                  ({duplicateAttemptNotice.correctCount}/{duplicateAttemptNotice.totalCount} câu đúng)
+                </div>
+              </div>
+            </div>
+            <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDuplicateAttemptNotice(null)}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Đóng
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = duplicateAttemptNotice;
+                  setDuplicateAttemptNotice(null);
+                  setViewingAttempt(target);
+                  setActiveView('result');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="rounded-lg bg-emerald-700 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-800"
+              >
+                Xem lại bài đã nộp
               </button>
             </div>
           </div>

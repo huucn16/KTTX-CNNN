@@ -119,14 +119,21 @@ export const QuizResultView: React.FC<QuizResultViewProps> = ({
             <Printer className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
             <span>In phiếu kết quả</span>
           </button>
-          <button
-            type="button"
-            onClick={onRetakeSameConfig}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-4 py-2 text-xs font-semibold text-white whitespace-nowrap hover:bg-emerald-800 transition-colors"
-          >
-            <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>Làm đề mới tương tự</span>
-          </button>
+          {attempt.mode === 'timed' ? (
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs font-semibold text-emerald-900 whitespace-nowrap">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />
+              <span>Đã hoàn thành (mỗi HS chỉ làm 1 lần)</span>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={onRetakeSameConfig}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-4 py-2 text-xs font-semibold text-white whitespace-nowrap hover:bg-emerald-800 transition-colors"
+            >
+              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>Làm đề mới tương tự</span>
+            </button>
+          )}
         </div>
       </div>
 
