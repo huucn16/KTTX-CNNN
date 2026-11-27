@@ -1,0 +1,354 @@
+{
+  "entities": {
+    "Submission": {
+      "title": "Submission",
+      "description": "Kết quả bài làm kiểm tra của học sinh được đồng bộ về bảng điểm giáo viên",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Mã định danh duy nhất của lượt nộp bài",
+          "minLength": 4,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "description": "Tên bài kiểm tra hoặc đề ôn luyện",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "studentName": {
+          "type": "string",
+          "description": "Họ và tên học sinh",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "studentClass": {
+          "type": "string",
+          "description": "Lớp của học sinh",
+          "minLength": 1,
+          "maxLength": 30
+        },
+        "mode": {
+          "type": "string",
+          "description": "Chế độ làm bài",
+          "enum": ["timed", "practice"]
+        },
+        "grade": {
+          "type": "string",
+          "description": "Khối lớp kiến thức",
+          "enum": ["Công nghệ 10", "Công nghệ 11", "Công nghệ 12", "all"]
+        },
+        "topicIds": {
+          "type": "array",
+          "description": "Danh sách mã chuyên đề trong đề thi"
+        },
+        "startedAt": {
+          "type": "string",
+          "description": "Thời điểm bắt đầu làm bài (ISO 8601)",
+          "minLength": 10,
+          "maxLength": 40
+        },
+        "completedAt": {
+          "type": "string",
+          "description": "Thời điểm nộp bài (ISO 8601)",
+          "minLength": 10,
+          "maxLength": 40
+        },
+        "durationUsedSeconds": {
+          "type": "number",
+          "description": "Thời gian làm bài thực tế tính bằng giây"
+        },
+        "durationLimitSeconds": {
+          "type": "number",
+          "description": "Thời gian giới hạn của đề tính bằng giây"
+        },
+        "questionIds": {
+          "type": "array",
+          "description": "Danh sách mã câu hỏi trong đề"
+        },
+        "selectedIndices": {
+          "type": "array",
+          "description": "Đáp án học sinh chọn theo thứ tự câu hỏi (-1 nếu bỏ trống)"
+        },
+        "flaggedIds": {
+          "type": "array",
+          "description": "Danh sách mã câu hỏi học sinh đánh dấu xem lại"
+        },
+        "correctCount": {
+          "type": "number",
+          "description": "Số câu trả lời đúng"
+        },
+        "totalCount": {
+          "type": "number",
+          "description": "Tổng số câu hỏi"
+        },
+        "score10": {
+          "type": "number",
+          "description": "Điểm số thang 10"
+        },
+        "leaveWarnings": {
+          "type": "number",
+          "description": "Số lần cảnh báo thoát màn hình khi kiểm tra"
+        },
+        "submitReason": {
+          "type": "string",
+          "description": "Hình thức nộp bài",
+          "enum": ["manual", "timeout", "auto-leave", "teacher-ended"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Dấu thời gian máy chủ lúc ghi nhận bài nộp"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "studentName",
+        "studentClass",
+        "mode",
+        "grade",
+        "topicIds",
+        "startedAt",
+        "completedAt",
+        "durationUsedSeconds",
+        "durationLimitSeconds",
+        "questionIds",
+        "selectedIndices",
+        "flaggedIds",
+        "correctCount",
+        "totalCount",
+        "score10",
+        "leaveWarnings",
+        "submitReason",
+        "createdAt"
+      ]
+    },
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Danh sách tài khoản giáo viên được cấp quyền xem bảng điểm toàn trường",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "UID tài khoản Google của giáo viên",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "description": "Email giáo viên",
+          "minLength": 3,
+          "maxLength": 150
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Tên hiển thị giáo viên",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Thời điểm cấp quyền"
+        }
+      },
+      "required": ["uid", "email", "displayName", "createdAt"]
+    },
+    "ExamControl": {
+      "title": "ExamControl",
+      "description": "Trạng thái đóng/mở bài thi trực tuyến do giáo viên điều khiển từ bảng điểm",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Mã phiên điều khiển kỳ thi",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "status": {
+          "type": "string",
+          "description": "Trạng thái bài thi hiện tại",
+          "enum": ["active", "ended"]
+        },
+        "targetClass": {
+          "type": "string",
+          "description": "Phạm vi lớp áp dụng ('all' hoặc tên lớp cụ thể)",
+          "minLength": 1,
+          "maxLength": 30
+        },
+        "endedAtMs": {
+          "type": "number",
+          "description": "Mốc thời gian kết thúc bài thi (epoch milliseconds)"
+        },
+        "note": {
+          "type": "string",
+          "description": "Ghi chú hiển thị cho học sinh khi kết thúc bài thi",
+          "maxLength": 200
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Dấu thời gian máy chủ lúc cập nhật trạng thái"
+        }
+      },
+      "required": ["id", "status", "targetClass", "endedAtMs", "note", "updatedAt"]
+    },
+    "SavedExam": {
+      "title": "SavedExam",
+      "description": "Bài thi hoàn chỉnh của học sinh được giáo viên lưu trữ lâu dài trong thẻ Bảng điểm",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Mã định danh duy nhất của bài thi đã lưu",
+          "minLength": 4,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "description": "Tên bài kiểm tra hoặc đề ôn luyện",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "studentName": {
+          "type": "string",
+          "description": "Họ và tên học sinh",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "studentClass": {
+          "type": "string",
+          "description": "Lớp của học sinh",
+          "minLength": 1,
+          "maxLength": 30
+        },
+        "mode": {
+          "type": "string",
+          "description": "Chế độ làm bài",
+          "enum": ["timed", "practice"]
+        },
+        "grade": {
+          "type": "string",
+          "description": "Khối lớp kiến thức",
+          "enum": ["Công nghệ 10", "Công nghệ 11", "Công nghệ 12", "all"]
+        },
+        "topicIds": {
+          "type": "array",
+          "description": "Danh sách mã chuyên đề trong đề thi"
+        },
+        "startedAt": {
+          "type": "string",
+          "description": "Thời điểm bắt đầu làm bài (ISO 8601)",
+          "minLength": 10,
+          "maxLength": 40
+        },
+        "completedAt": {
+          "type": "string",
+          "description": "Thời điểm nộp bài (ISO 8601)",
+          "minLength": 10,
+          "maxLength": 40
+        },
+        "durationUsedSeconds": {
+          "type": "number",
+          "description": "Thời gian làm bài thực tế tính bằng giây"
+        },
+        "durationLimitSeconds": {
+          "type": "number",
+          "description": "Thời gian giới hạn của đề tính bằng giây"
+        },
+        "questionIds": {
+          "type": "array",
+          "description": "Danh sách mã câu hỏi trong đề"
+        },
+        "selectedIndices": {
+          "type": "array",
+          "description": "Đáp án học sinh chọn theo thứ tự câu hỏi (-1 nếu bỏ trống)"
+        },
+        "flaggedIds": {
+          "type": "array",
+          "description": "Danh sách mã câu hỏi học sinh đánh dấu xem lại"
+        },
+        "correctCount": {
+          "type": "number",
+          "description": "Số câu trả lời đúng"
+        },
+        "totalCount": {
+          "type": "number",
+          "description": "Tổng số câu hỏi"
+        },
+        "score10": {
+          "type": "number",
+          "description": "Điểm số thang 10"
+        },
+        "leaveWarnings": {
+          "type": "number",
+          "description": "Số lần cảnh báo thoát màn hình khi kiểm tra"
+        },
+        "submitReason": {
+          "type": "string",
+          "description": "Hình thức nộp bài",
+          "enum": ["manual", "timeout", "auto-leave", "teacher-ended"]
+        },
+        "savedByUid": {
+          "type": "string",
+          "description": "UID giáo viên thực hiện lưu bài thi",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "savedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Dấu thời gian máy chủ lúc lưu trữ bài thi"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "studentName",
+        "studentClass",
+        "mode",
+        "grade",
+        "topicIds",
+        "startedAt",
+        "completedAt",
+        "durationUsedSeconds",
+        "durationLimitSeconds",
+        "questionIds",
+        "selectedIndices",
+        "flaggedIds",
+        "correctCount",
+        "totalCount",
+        "score10",
+        "leaveWarnings",
+        "submitReason",
+        "savedByUid",
+        "savedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/submissions/{submissionId}": {
+      "schema": { "$ref": "#/entities/Submission" },
+      "description": "Kho lưu trữ bài nộp và điểm số của học sinh đồng bộ về thẻ Bảng điểm"
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminUser" },
+      "description": "Tài khoản giáo viên/quản trị viên được phép đọc và quản lý bảng điểm"
+    },
+    "/examControl/{controlId}": {
+      "schema": { "$ref": "#/entities/ExamControl" },
+      "description": "Trạng thái kết thúc hoặc mở lại bài thi từ thẻ Bảng điểm"
+    },
+    "/savedExams/{savedExamId}": {
+      "schema": { "$ref": "#/entities/SavedExam" },
+      "description": "Kho bài thi hoàn chỉnh của học sinh được lưu trữ lâu dài từ thẻ Bảng điểm"
+    }
+  }
+}

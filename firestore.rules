@@ -1,0 +1,234 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Global Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.token.email_verified == true
+        && (
+          request.auth.token.email == 'huucn16@gmail.com'
+          || exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        );
+    }
+
+    function isValidSubmission(data, submissionId) {
+      return data.keys().hasAll([
+          'id',
+          'title',
+          'studentName',
+          'studentClass',
+          'mode',
+          'grade',
+          'topicIds',
+          'startedAt',
+          'completedAt',
+          'durationUsedSeconds',
+          'durationLimitSeconds',
+          'questionIds',
+          'selectedIndices',
+          'flaggedIds',
+          'correctCount',
+          'totalCount',
+          'score10',
+          'leaveWarnings',
+          'submitReason',
+          'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id',
+          'title',
+          'studentName',
+          'studentClass',
+          'mode',
+          'grade',
+          'topicIds',
+          'startedAt',
+          'completedAt',
+          'durationUsedSeconds',
+          'durationLimitSeconds',
+          'questionIds',
+          'selectedIndices',
+          'flaggedIds',
+          'correctCount',
+          'totalCount',
+          'score10',
+          'leaveWarnings',
+          'submitReason',
+          'createdAt'
+        ])
+        && isValidId(data.id)
+        && data.id == submissionId
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 100
+        && data.studentClass is string && data.studentClass.size() >= 1 && data.studentClass.size() <= 30
+        && data.mode in ['timed', 'practice']
+        && data.grade in ['Công nghệ 10', 'Công nghệ 11', 'Công nghệ 12', 'all']
+        && data.topicIds is list && data.topicIds.size() >= 1 && data.topicIds.size() <= 30 && data.topicIds[0] is string
+        && data.startedAt is string && data.startedAt.size() >= 10 && data.startedAt.size() <= 40
+        && data.completedAt is string && data.completedAt.size() >= 10 && data.completedAt.size() <= 40
+        && data.durationUsedSeconds is int && data.durationUsedSeconds >= 0 && data.durationUsedSeconds <= 7200
+        && data.durationLimitSeconds is int && data.durationLimitSeconds >= 0 && data.durationLimitSeconds <= 7200
+        && data.questionIds is list && data.questionIds.size() >= 1 && data.questionIds.size() <= 100 && data.questionIds[0] is string
+        && data.selectedIndices is list && data.selectedIndices.size() == data.questionIds.size() && data.selectedIndices[0] is int
+        && data.flaggedIds is list && data.flaggedIds.size() <= 100 && (data.flaggedIds.size() == 0 || data.flaggedIds[0] is string)
+        && data.totalCount is int && data.totalCount >= 1 && data.totalCount <= 200 && data.totalCount == data.questionIds.size()
+        && data.correctCount is int && data.correctCount >= 0 && data.correctCount <= data.totalCount
+        && (data.score10 is int || data.score10 is float) && data.score10 >= 0 && data.score10 <= 10
+        && data.leaveWarnings is int && data.leaveWarnings >= 0 && data.leaveWarnings <= 100
+        && data.submitReason in ['manual', 'timeout', 'auto-leave', 'teacher-ended']
+        && data.createdAt == request.time;
+    }
+
+    function isValidSavedExam(data, savedExamId) {
+      return data.keys().hasAll([
+          'id',
+          'title',
+          'studentName',
+          'studentClass',
+          'mode',
+          'grade',
+          'topicIds',
+          'startedAt',
+          'completedAt',
+          'durationUsedSeconds',
+          'durationLimitSeconds',
+          'questionIds',
+          'selectedIndices',
+          'flaggedIds',
+          'correctCount',
+          'totalCount',
+          'score10',
+          'leaveWarnings',
+          'submitReason',
+          'savedByUid',
+          'savedAt'
+        ])
+        && data.keys().hasOnly([
+          'id',
+          'title',
+          'studentName',
+          'studentClass',
+          'mode',
+          'grade',
+          'topicIds',
+          'startedAt',
+          'completedAt',
+          'durationUsedSeconds',
+          'durationLimitSeconds',
+          'questionIds',
+          'selectedIndices',
+          'flaggedIds',
+          'correctCount',
+          'totalCount',
+          'score10',
+          'leaveWarnings',
+          'submitReason',
+          'savedByUid',
+          'savedAt'
+        ])
+        && isValidId(data.id)
+        && data.id == savedExamId
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 100
+        && data.studentClass is string && data.studentClass.size() >= 1 && data.studentClass.size() <= 30
+        && data.mode in ['timed', 'practice']
+        && data.grade in ['Công nghệ 10', 'Công nghệ 11', 'Công nghệ 12', 'all']
+        && data.topicIds is list && data.topicIds.size() >= 1 && data.topicIds.size() <= 30 && data.topicIds[0] is string
+        && data.startedAt is string && data.startedAt.size() >= 10 && data.startedAt.size() <= 40
+        && data.completedAt is string && data.completedAt.size() >= 10 && data.completedAt.size() <= 40
+        && data.durationUsedSeconds is int && data.durationUsedSeconds >= 0 && data.durationUsedSeconds <= 7200
+        && data.durationLimitSeconds is int && data.durationLimitSeconds >= 0 && data.durationLimitSeconds <= 7200
+        && data.questionIds is list && data.questionIds.size() >= 1 && data.questionIds.size() <= 100 && data.questionIds[0] is string
+        && data.selectedIndices is list && data.selectedIndices.size() == data.questionIds.size() && data.selectedIndices[0] is int
+        && data.flaggedIds is list && data.flaggedIds.size() <= 100 && (data.flaggedIds.size() == 0 || data.flaggedIds[0] is string)
+        && data.totalCount is int && data.totalCount >= 1 && data.totalCount <= 200 && data.totalCount == data.questionIds.size()
+        && data.correctCount is int && data.correctCount >= 0 && data.correctCount <= data.totalCount
+        && (data.score10 is int || data.score10 is float) && data.score10 >= 0 && data.score10 <= 10
+        && data.leaveWarnings is int && data.leaveWarnings >= 0 && data.leaveWarnings <= 100
+        && data.submitReason in ['manual', 'timeout', 'auto-leave', 'teacher-ended']
+        && isValidId(data.savedByUid)
+        && data.savedByUid == request.auth.uid
+        && data.savedAt == request.time;
+    }
+
+    function isValidAdmin(data, adminId) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'email', 'displayName', 'createdAt'])
+        && isValidId(data.uid)
+        && data.uid == adminId
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 150
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && data.createdAt == request.time;
+    }
+
+    function isValidExamControl(data, controlId) {
+      return data.keys().hasAll(['id', 'status', 'targetClass', 'endedAtMs', 'note', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'status', 'targetClass', 'endedAtMs', 'note', 'updatedAt'])
+        && isValidId(data.id)
+        && data.id == controlId
+        && data.status in ['active', 'ended']
+        && data.targetClass is string && data.targetClass.size() >= 1 && data.targetClass.size() <= 30
+        && data.endedAtMs is int && data.endedAtMs >= 0
+        && data.note is string && data.note.size() <= 200
+        && data.updatedAt == request.time;
+    }
+
+    // Student quiz submissions: write-once dropbox for students, full read/delete for verified teacher/admin
+    match /submissions/{submissionId} {
+      allow get: if isValidId(submissionId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(submissionId) && isValidSubmission(incoming(), submissionId);
+      allow update: if false;
+      allow delete: if isValidId(submissionId) && isAdmin();
+    }
+
+    // Archived student exam papers saved from Bảng điểm by verified teacher/admin
+    match /savedExams/{savedExamId} {
+      allow get: if isValidId(savedExamId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(savedExamId) && isAdmin() && isValidSavedExam(incoming(), savedExamId);
+      allow update: if false;
+      allow delete: if isValidId(savedExamId) && isAdmin();
+    }
+
+    // Authorized teacher accounts
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && isSignedIn() && request.auth.token.email_verified == true && (request.auth.uid == adminId || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(adminId) && isAdmin() && isValidAdmin(incoming(), adminId);
+      allow update: if false;
+      allow delete: if isValidId(adminId) && isAdmin();
+    }
+
+    // Teacher exam session control (end exam early / reopen exam)
+    match /examControl/{controlId} {
+      allow get: if isValidId(controlId) && controlId == 'global';
+      allow list: if isAdmin();
+      allow create: if isValidId(controlId) && controlId == 'global' && isAdmin() && isValidExamControl(incoming(), controlId);
+      allow update: if isValidId(controlId)
+        && controlId == 'global'
+        && isAdmin()
+        && isValidExamControl(incoming(), controlId)
+        && incoming().id == resource.data.id
+        && incoming().diff(resource.data).affectedKeys().hasOnly(['status', 'targetClass', 'endedAtMs', 'note', 'updatedAt']);
+      allow delete: if false;
+    }
+  }
+}
