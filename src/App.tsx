@@ -181,8 +181,6 @@ export default function App() {
       setTeacherError('');
       if (!user) {
         setIsTeacherAuthorized(false);
-        setSyncedAttempts([]);
-        setCloudSavedExams([]);
         setAuthReady(true);
         return;
       }
@@ -190,15 +188,9 @@ export default function App() {
         const authorized = await checkIsTeacherUser(user);
         if (!active) return;
         setIsTeacherAuthorized(authorized);
-        if (!authorized) {
-          setSyncedAttempts([]);
-          setCloudSavedExams([]);
-        }
       } catch {
         if (!active) return;
         setIsTeacherAuthorized(false);
-        setSyncedAttempts([]);
-        setCloudSavedExams([]);
       } finally {
         if (active) setAuthReady(true);
       }
@@ -209,9 +201,9 @@ export default function App() {
     };
   }, []);
 
-  // Subscribe to synced student submissions & saved exams in Firestore when authorized
+  // Subscribe to synced student submissions & saved exams in Firestore without login
   useEffect(() => {
-    if (!authReady || !isTeacherAuthorized) {
+    if (!authReady) {
       return;
     }
     setSyncLoading(true);
@@ -239,7 +231,7 @@ export default function App() {
       unsubSubmissions();
       unsubSaved();
     };
-  }, [authReady, isTeacherAuthorized]);
+  }, [authReady]);
 
   const mergedAttempts = useMemo(() => {
     const byId = new Map<string, QuizAttempt>();
@@ -278,7 +270,7 @@ export default function App() {
       setIsTeacherAuthorized(ok);
       if (!ok) {
         setTeacherError(
-          `Tài khoản ${cred.user.email || ''} chưa được cấp quyền đồng bộ toàn lớp.`
+          `Tài khoản ${cred.user.email || ''} chưa được cấp quyền quản trị giáo viên.`
         );
       }
       return ok;
@@ -291,8 +283,6 @@ export default function App() {
   const handleTeacherSignOut = async () => {
     setTeacherError('');
     await signOut(auth);
-    setSyncedAttempts([]);
-    setCloudSavedExams([]);
     setIsTeacherAuthorized(false);
   };
 

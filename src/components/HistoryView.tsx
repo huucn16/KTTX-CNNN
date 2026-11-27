@@ -233,7 +233,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               <span className="font-medium">
                 {syncLoading
                   ? 'Đang đồng bộ điểm...'
-                  : `Đã đồng bộ (${teacherUser?.email || 'Giáo viên'})`}
+                  : `GV: ${teacherUser?.email || 'Đã xác thực'}`}
               </span>
               <button
                 type="button"
@@ -245,14 +245,10 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => void onTeacherSignIn()}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700 bg-emerald-50 px-3.5 py-2 text-xs font-semibold text-emerald-800 whitespace-nowrap hover:bg-emerald-100 transition-colors"
-            >
-              <LogIn className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>Đồng bộ điểm các máy</span>
-            </button>
+            <div className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-900">
+              <CloudCheck className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />
+              <span>{syncLoading ? 'Đang tải bảng điểm...' : 'Đồng bộ tự động'}</span>
+            </div>
           )}
 
           {examControl?.status === 'ended' ? (
@@ -375,9 +371,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           <p className="mt-1 text-xs text-slate-500">
             {viewFilter === 'saved'
               ? 'Lưu trữ lâu dài hồ sơ bài làm'
-              : isTeacherAuthorized
-              ? 'Gồm bài làm đồng bộ từ các máy'
-              : 'Lưu và đồng bộ khi nộp bài'}
+              : 'Gồm bài làm đồng bộ từ các máy'}
           </p>
         </div>
 

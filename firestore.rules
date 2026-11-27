@@ -190,19 +190,19 @@ service cloud.firestore {
         && data.updatedAt == request.time;
     }
 
-    // Student quiz submissions: write-once dropbox for students, full read/delete for verified teacher/admin
+    // Student quiz submissions: write-once from students, public read in Bảng điểm without login, delete by verified teacher/admin
     match /submissions/{submissionId} {
-      allow get: if isValidId(submissionId) && isAdmin();
-      allow list: if isAdmin();
+      allow get: if isValidId(submissionId);
+      allow list: if true;
       allow create: if isValidId(submissionId) && isValidSubmission(incoming(), submissionId);
       allow update: if false;
       allow delete: if isValidId(submissionId) && isAdmin();
     }
 
-    // Archived student exam papers saved from Bảng điểm by verified teacher/admin
+    // Archived student exam papers: readable in Bảng điểm without login, create/delete by verified teacher/admin
     match /savedExams/{savedExamId} {
-      allow get: if isValidId(savedExamId) && isAdmin();
-      allow list: if isAdmin();
+      allow get: if isValidId(savedExamId);
+      allow list: if true;
       allow create: if isValidId(savedExamId) && isAdmin() && isValidSavedExam(incoming(), savedExamId);
       allow update: if false;
       allow delete: if isValidId(savedExamId) && isAdmin();
