@@ -182,8 +182,8 @@ export const QrAssignModal: React.FC<QrAssignModalProps> = ({ target, onClose })
           <div className="flex-1 space-y-3.5 min-w-0 w-full">
             <p className="text-xs leading-relaxed text-slate-600">
               {target.isRandomMix
-                ? 'Học sinh quét mã QR hoặc nhấp đường dẫn để điền Họ tên, Lớp và làm bài ngay không cần đăng nhập; mỗi em nhận ngẫu nhiên 10 câu chuẩn ma trận (4 NB · 3 TH · 3 VD).'
-                : 'Học sinh quét mã QR hoặc nhấp vào đường dẫn để điền Họ tên, Lớp và làm bài ngay không cần đăng nhập tài khoản.'}
+                ? 'Mỗi học sinh quét mã QR sẽ được rút ngẫu nhiên 10 câu chuẩn ma trận (4 Nhận biết · 3 Thông hiểu · 3 Vận dụng) tạo mã đề riêng biệt.'
+                : 'Học sinh dùng điện thoại quét mã QR để mở thẳng đề thi này và nhập Họ tên, Lớp trước khi làm bài.'}
             </p>
 
             {/* Shuffle Mode Selection */}

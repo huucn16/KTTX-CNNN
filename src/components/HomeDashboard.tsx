@@ -350,7 +350,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               </div>
             </div>
 
-            {attemptedStart && hasMissingStudentInfo ? (
+            {attemptedStart && hasMissingStudentInfo && (
               <p
                 role="alert"
                 className="flex items-center gap-1.5 text-xs font-medium text-rose-700"
@@ -359,10 +359,6 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                 <span>
                   Vui lòng nhập đầy đủ Họ và tên học sinh và Lớp trước khi vào làm bài.
                 </span>
-              </p>
-            ) : (
-              <p className="text-xs text-slate-500">
-                Học sinh chỉ cần nhập Họ và tên và Lớp để làm bài ngay, không cần đăng nhập tài khoản.
               </p>
             )}
           </div>
