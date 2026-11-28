@@ -19,13 +19,15 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isAdmin() {
+    function isPrimaryAdmin() {
       return isSignedIn()
         && request.auth.token.email_verified == true
-        && (
-          request.auth.token.email == 'huucn16@gmail.com'
-          || exists(/databases/$(database)/documents/admins/$(request.auth.uid))
-        );
+        && request.auth.token.email == 'huucn16@gmail.com';
+    }
+
+    function isAdmin() {
+      return isPrimaryAdmin()
+        || (isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
     }
 
     function isValidSubmission(data, submissionId) {
@@ -190,6 +192,44 @@ service cloud.firestore {
         && data.updatedAt == request.time;
     }
 
+    function isValidIssuedAccount(data, accountId) {
+      return data.keys().hasAll([
+          'uid',
+          'username',
+          'email',
+          'displayName',
+          'role',
+          'studentClass',
+          'active',
+          'createdByUid',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid',
+          'username',
+          'email',
+          'displayName',
+          'role',
+          'studentClass',
+          'active',
+          'createdByUid',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidId(data.uid)
+        && data.uid == accountId
+        && data.username is string && data.username.size() >= 2 && data.username.size() <= 150
+        && data.email is string && data.email.size() >= 5 && data.email.size() <= 150
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && data.role in ['student', 'teacher']
+        && data.studentClass is string && data.studentClass.size() <= 30
+        && data.active is bool
+        && isValidId(data.createdByUid)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     // Student quiz submissions: write-once from students, public read in Bảng điểm without login, delete by verified teacher/admin
     match /submissions/{submissionId} {
       allow get: if isValidId(submissionId);
@@ -210,11 +250,34 @@ service cloud.firestore {
 
     // Authorized teacher accounts
     match /admins/{adminId} {
-      allow get: if isValidId(adminId) && isSignedIn() && request.auth.token.email_verified == true && (request.auth.uid == adminId || isAdmin());
+      allow get: if isValidId(adminId) && isSignedIn() && (request.auth.uid == adminId || isAdmin());
       allow list: if isAdmin();
       allow create: if isValidId(adminId) && isAdmin() && isValidAdmin(incoming(), adminId);
       allow update: if false;
       allow delete: if isValidId(adminId) && isAdmin();
+    }
+
+    // Admin-issued user account metadata (passwords handled strictly by Firebase Auth)
+    match /issuedAccounts/{accountId} {
+      allow get: if isValidId(accountId) && isSignedIn() && (request.auth.uid == accountId || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(accountId)
+        && isAdmin()
+        && isValidIssuedAccount(incoming(), accountId)
+        && incoming().createdByUid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(accountId)
+        && isAdmin()
+        && isValidIssuedAccount(incoming(), accountId)
+        && incoming().uid == resource.data.uid
+        && incoming().username == resource.data.username
+        && incoming().email == resource.data.email
+        && incoming().createdByUid == resource.data.createdByUid
+        && incoming().createdAt == resource.data.createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(resource.data).affectedKeys().hasOnly(['displayName', 'role', 'studentClass', 'active', 'updatedAt']);
+      allow delete: if isValidId(accountId) && isAdmin();
     }
 
     // Teacher exam session control (end exam early / reopen exam)

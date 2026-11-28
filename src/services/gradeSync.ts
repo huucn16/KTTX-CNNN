@@ -217,14 +217,21 @@ export function loadPendingAttempts(): QuizAttempt[] {
 }
 
 export async function checkIsTeacherUser(user: User | null): Promise<boolean> {
-  if (!user || !user.emailVerified) return false;
-  if (user.email?.toLowerCase() === PRIMARY_TEACHER_EMAIL) return true;
-  const path = `admins/${user.uid}`;
+  if (!user) return false;
+  if (user.emailVerified && user.email?.toLowerCase() === PRIMARY_TEACHER_EMAIL) {
+    return true;
+  }
+  const adminPath = `admins/${user.uid}`;
   try {
     const snap = await getDoc(doc(db, 'admins', user.uid));
-    return snap.exists();
+    if (!snap.exists()) return false;
+    const issuedSnap = await getDoc(doc(db, 'issuedAccounts', user.uid));
+    if (issuedSnap.exists() && issuedSnap.data().active === false) {
+      return false;
+    }
+    return true;
   } catch (error) {
-    handleFirestoreError(error, OperationType.GET, path);
+    handleFirestoreError(error, OperationType.GET, adminPath);
   }
 }
 

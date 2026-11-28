@@ -16,6 +16,7 @@ import {
   Search,
   StopCircle,
   Trash2,
+  UserPlus,
 } from 'lucide-react';
 import { ExamControlState, QuizAttempt } from '../types/quiz';
 import { downloadBatchExamsDoc, downloadStudentExamDoc } from '../utils/exportExam';
@@ -32,6 +33,7 @@ interface HistoryViewProps {
   examControl: ExamControlState | null;
   onTeacherSignIn: () => Promise<boolean>;
   onTeacherSignOut: () => Promise<void>;
+  onOpenManageAccounts?: () => void;
   onEndExam: (targetClass: string, note: string) => Promise<void>;
   onReopenExam: () => Promise<void>;
   onViewAttempt: (attempt: QuizAttempt) => void;
@@ -62,6 +64,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   examControl,
   onTeacherSignIn,
   onTeacherSignOut,
+  onOpenManageAccounts,
   onEndExam,
   onReopenExam,
   onViewAttempt,
@@ -242,21 +245,33 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 
         <div className="flex flex-wrap items-center gap-2">
           {isTeacherAuthorized ? (
-            <div className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-900">
-              <CloudCheck className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />
-              <span className="font-medium">
-                {syncLoading
-                  ? 'Đang đồng bộ điểm...'
-                  : `GV: ${teacherUser?.email || 'Đã xác thực'}`}
-              </span>
-              <button
-                type="button"
-                onClick={() => void onTeacherSignOut()}
-                className="ml-1 inline-flex items-center gap-1 rounded border border-emerald-300 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
-              >
-                <LogOut className="h-3 w-3" aria-hidden="true" />
-                <span>Đăng xuất</span>
-              </button>
+            <div className="inline-flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-900">
+                <CloudCheck className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />
+                <span className="font-medium">
+                  {syncLoading
+                    ? 'Đang đồng bộ điểm...'
+                    : `GV: ${teacherUser?.displayName || teacherUser?.email || 'Đã xác thực'}`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void onTeacherSignOut()}
+                  className="ml-1 inline-flex items-center gap-1 rounded border border-emerald-300 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  <LogOut className="h-3 w-3" aria-hidden="true" />
+                  <span>Đăng xuất</span>
+                </button>
+              </div>
+              {onOpenManageAccounts && (
+                <button
+                  type="button"
+                  onClick={onOpenManageAccounts}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-700 bg-white px-3 py-2 text-xs font-semibold text-emerald-800 whitespace-nowrap hover:bg-emerald-50 transition-colors"
+                >
+                  <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Cấp tài khoản</span>
+                </button>
+              )}
             </div>
           ) : (
             <div className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-900">

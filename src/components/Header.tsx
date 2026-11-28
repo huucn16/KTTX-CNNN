@@ -1,16 +1,18 @@
 import React from 'react';
 import { User } from 'firebase/auth';
-import { LogIn, LogOut, UserCircle2 } from 'lucide-react';
-import { AppView } from '../types/quiz';
+import { LogIn, LogOut, UserCircle2, UserPlus } from 'lucide-react';
+import { AppView, IssuedAccount } from '../types/quiz';
 
 interface HeaderProps {
   activeView: AppView;
   isQuizActive: boolean;
   user: User | null;
+  issuedProfile: IssuedAccount | null;
   isTeacherAuthorized: boolean;
   onNavigate: (view: AppView) => void;
   onQuickStart15Min: () => void;
   onOpenLogin: () => void;
+  onOpenManageAccounts: () => void;
   onSignOut: () => void;
 }
 
@@ -24,13 +26,26 @@ export const Header: React.FC<HeaderProps> = ({
   activeView,
   isQuizActive,
   user,
+  issuedProfile,
   isTeacherAuthorized,
   onNavigate,
   onQuickStart15Min,
   onOpenLogin,
+  onOpenManageAccounts,
   onSignOut,
 }) => {
-  const displayName = user?.displayName || user?.email?.split('@')[0] || 'Tài khoản';
+  const displayName =
+    issuedProfile?.displayName ||
+    user?.displayName ||
+    issuedProfile?.username ||
+    user?.email?.split('@')[0] ||
+    'Tài khoản';
+
+  const roleLabel = isTeacherAuthorized
+    ? 'Giáo viên'
+    : issuedProfile?.studentClass
+    ? `HS · ${issuedProfile.studentClass}`
+    : 'Học sinh';
 
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-sm no-print">
@@ -76,7 +91,7 @@ export const Header: React.FC<HeaderProps> = ({
               ) : (
                 <UserCircle2 className="h-4 w-4 text-emerald-700 shrink-0" aria-hidden="true" />
               )}
-              <div className="hidden sm:flex items-center gap-1.5 max-w-[160px]">
+              <div className="hidden sm:flex items-center gap-1.5 max-w-[180px]">
                 <span className="truncate font-semibold text-slate-800">{displayName}</span>
                 <span
                   className={`rounded px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${
@@ -85,9 +100,20 @@ export const Header: React.FC<HeaderProps> = ({
                       : 'bg-slate-200 text-slate-700'
                   }`}
                 >
-                  {isTeacherAuthorized ? 'Giáo viên' : 'Học sinh'}
+                  {roleLabel}
                 </span>
               </div>
+              {isTeacherAuthorized && (
+                <button
+                  type="button"
+                  onClick={onOpenManageAccounts}
+                  title="Cấp và quản lý tài khoản đăng nhập"
+                  className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-900 hover:bg-emerald-100 transition-colors"
+                >
+                  <UserPlus className="h-3 w-3" aria-hidden="true" />
+                  <span className="hidden lg:inline">Cấp tài khoản</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onSignOut}

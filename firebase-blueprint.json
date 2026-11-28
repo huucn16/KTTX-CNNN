@@ -331,6 +331,81 @@
         "savedByUid",
         "savedAt"
       ]
+    },
+    "IssuedAccount": {
+      "title": "IssuedAccount",
+      "description": "Hồ sơ tài khoản đăng nhập do quản trị viên cấp cho giáo viên hoặc học sinh (không lưu mật khẩu)",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "UID Firebase Auth của tài khoản được cấp",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "username": {
+          "type": "string",
+          "description": "Tên đăng nhập hoặc định danh tài khoản",
+          "minLength": 2,
+          "maxLength": 150
+        },
+        "email": {
+          "type": "string",
+          "description": "Email đăng nhập Firebase Auth tương ứng",
+          "minLength": 5,
+          "maxLength": 150
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Họ và tên hiển thị của người dùng",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "role": {
+          "type": "string",
+          "description": "Vai trò được cấp",
+          "enum": ["student", "teacher"]
+        },
+        "studentClass": {
+          "type": "string",
+          "description": "Lớp học của học sinh (để trống nếu là giáo viên)",
+          "maxLength": 30
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Trạng thái kích hoạt tài khoản"
+        },
+        "createdByUid": {
+          "type": "string",
+          "description": "UID của quản trị viên cấp tài khoản",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Thời điểm cấp tài khoản"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Thời điểm cập nhật gần nhất"
+        }
+      },
+      "required": [
+        "uid",
+        "username",
+        "email",
+        "displayName",
+        "role",
+        "studentClass",
+        "active",
+        "createdByUid",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -349,6 +424,10 @@
     "/savedExams/{savedExamId}": {
       "schema": { "$ref": "#/entities/SavedExam" },
       "description": "Kho bài thi hoàn chỉnh của học sinh được lưu trữ lâu dài từ thẻ Bảng điểm"
+    },
+    "/issuedAccounts/{accountId}": {
+      "schema": { "$ref": "#/entities/IssuedAccount" },
+      "description": "Danh sách tài khoản đăng nhập do quản trị viên cấp phát và quản lý trạng thái"
     }
   }
 }

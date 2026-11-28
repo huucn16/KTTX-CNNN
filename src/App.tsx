@@ -1,8 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+  User,
+} from 'firebase/auth';
 import { AlertCircle, GraduationCap, UserCheck, X } from 'lucide-react';
 import { BUILTIN_QUESTIONS, TOPICS } from './data/questions';
-import { auth, googleProvider } from './firebase';
+import {
+  auth,
+  googleProvider,
+  mapAuthErrorToVietnamese,
+  normalizeIssuedAccountIdentifier,
+} from './firebase';
+import { AdminAccountsModal } from './components/AdminAccountsModal';
 import { Header } from './components/Header';
 import { HistoryView } from './components/HistoryView';
 import { HomeDashboard } from './components/HomeDashboard';
@@ -10,6 +22,13 @@ import { LoginModal } from './components/LoginModal';
 import { QuizResultView } from './components/QuizResultView';
 import { QuizRunner } from './components/QuizRunner';
 import { WrongStatsView } from './components/WrongStatsView';
+import {
+  createIssuedAccount,
+  deleteIssuedAccountRecord,
+  fetchIssuedAccountProfile,
+  setIssuedAccountActive,
+  subscribeIssuedAccounts,
+} from './services/accountService';
 import {
   checkIsTeacherUser,
   deleteSavedExamFromArchive,
@@ -30,6 +49,8 @@ import {
   AppView,
   ExamControlState,
   GradeLevel,
+  IssuedAccount,
+  IssuedAccountRole,
   Question,
   QuizAttempt,
   QuizConfig,
@@ -129,16 +150,20 @@ export default function App() {
   const [viewingAttempt, setViewingAttempt] = useState<QuizAttempt | null>(null);
 
   const [teacherUser, setTeacherUser] = useState<User | null>(null);
+  const [issuedProfile, setIssuedProfile] = useState<IssuedAccount | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [isTeacherAuthorized, setIsTeacherAuthorized] = useState(false);
   const [syncedAttempts, setSyncedAttempts] = useState<QuizAttempt[]>([]);
   const [cloudSavedExams, setCloudSavedExams] = useState<QuizAttempt[]>([]);
+  const [issuedAccounts, setIssuedAccounts] = useState<IssuedAccount[]>([]);
+  const [issuedAccountsLoading, setIssuedAccountsLoading] = useState(false);
   const [localSavedExams, setLocalSavedExams] = useState<QuizAttempt[]>(() =>
     loadLocalSavedExams()
   );
   const [syncLoading, setSyncLoading] = useState(false);
   const [teacherError, setTeacherError] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showAdminAccountsModal, setShowAdminAccountsModal] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [examControl, setExamControl] = useState<ExamControlState | null>(null);
   const [examEndedNotice, setExamEndedNotice] = useState<string | null>(null);
@@ -175,7 +200,7 @@ export default function App() {
     return () => window.removeEventListener('online', flushPending);
   }, [syncSingleAttempt]);
 
-  // Watch Firebase Auth state for synced gradebook & teacher exam control
+  // Watch Firebase Auth state for synced gradebook, issued accounts & teacher exam control
   useEffect(() => {
     let active = true;
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -183,28 +208,55 @@ export default function App() {
       setTeacherUser(user);
       setTeacherError('');
       if (!user) {
+        setIssuedProfile(null);
         setIsTeacherAuthorized(false);
         setSyncedAttempts([]);
         setCloudSavedExams([]);
+        setIssuedAccounts([]);
+        setShowAdminAccountsModal(false);
         setAuthReady(true);
         return;
       }
       try {
-        if (!loadStudentName().trim() && user.displayName) {
-          handleStudentNameChange(user.displayName);
+        const profile = await fetchIssuedAccountProfile(user.uid).catch(() => null);
+        if (!active) return;
+
+        if (profile && !profile.active) {
+          await signOut(auth);
+          if (!active) return;
+          setIssuedProfile(null);
+          setIsTeacherAuthorized(false);
+          setLoginError(
+            'Tài khoản này đã bị quản trị viên tạm khóa. Vui lòng liên hệ GVBM: Trần Văn Hữu.'
+          );
+          setShowLoginModal(true);
+          return;
         }
+
+        setIssuedProfile(profile);
+        const preferredName = profile?.displayName || user.displayName || '';
+        if (preferredName && (profile || !loadStudentName().trim())) {
+          handleStudentNameChange(preferredName);
+        }
+        if (profile?.studentClass) {
+          handleStudentClassChange(profile.studentClass);
+        }
+
         const authorized = await checkIsTeacherUser(user);
         if (!active) return;
         setIsTeacherAuthorized(authorized);
         if (!authorized) {
           setSyncedAttempts([]);
           setCloudSavedExams([]);
+          setIssuedAccounts([]);
         }
       } catch {
         if (!active) return;
+        setIssuedProfile(null);
         setIsTeacherAuthorized(false);
         setSyncedAttempts([]);
         setCloudSavedExams([]);
+        setIssuedAccounts([]);
       } finally {
         if (active) setAuthReady(true);
       }
@@ -215,12 +267,13 @@ export default function App() {
     };
   }, []);
 
-  // Subscribe to synced student submissions & saved exams in Firestore when authorized
+  // Subscribe to synced student submissions, saved exams & issued accounts when authorized
   useEffect(() => {
     if (!authReady || !isTeacherAuthorized) {
       return;
     }
     setSyncLoading(true);
+    setIssuedAccountsLoading(true);
     const unsubSubmissions = subscribeTeacherSubmissions(
       BUILTIN_QUESTIONS,
       (list) => {
@@ -241,9 +294,19 @@ export default function App() {
         setTeacherError('Không thể tải kho bài thi đã lưu trên hệ thống.');
       }
     );
+    const unsubAccounts = subscribeIssuedAccounts(
+      (list) => {
+        setIssuedAccounts(list);
+        setIssuedAccountsLoading(false);
+      },
+      () => {
+        setIssuedAccountsLoading(false);
+      }
+    );
     return () => {
       unsubSubmissions();
       unsubSaved();
+      unsubAccounts();
     };
   }, [authReady, isTeacherAuthorized]);
 
@@ -276,6 +339,45 @@ export default function App() {
 
   const syncedAttemptIds = useMemo(() => syncedAttempts.map((a) => a.id), [syncedAttempts]);
 
+  const handleCredentialSignIn = async (
+    identifier: string,
+    password: string
+  ): Promise<boolean> => {
+    setLoginError('');
+    setTeacherError('');
+    const { email } = normalizeIssuedAccountIdentifier(identifier);
+    if (!email) {
+      setLoginError('Tên đăng nhập không hợp lệ.');
+      return false;
+    }
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      const profile = await fetchIssuedAccountProfile(cred.user.uid).catch(() => null);
+      if (profile && !profile.active) {
+        await signOut(auth);
+        setLoginError(
+          'Tài khoản này đã bị quản trị viên tạm khóa. Vui lòng liên hệ GVBM: Trần Văn Hữu.'
+        );
+        return false;
+      }
+      setIssuedProfile(profile);
+      if (profile?.displayName) {
+        handleStudentNameChange(profile.displayName);
+      } else if (!loadStudentName().trim() && cred.user.displayName) {
+        handleStudentNameChange(cred.user.displayName);
+      }
+      if (profile?.studentClass) {
+        handleStudentClassChange(profile.studentClass);
+      }
+      const ok = await checkIsTeacherUser(cred.user);
+      setIsTeacherAuthorized(ok);
+      return true;
+    } catch (error) {
+      setLoginError(mapAuthErrorToVietnamese(error));
+      return false;
+    }
+  };
+
   const handleGeneralSignIn = async (): Promise<boolean> => {
     setLoginError('');
     setTeacherError('');
@@ -287,8 +389,11 @@ export default function App() {
       const ok = await checkIsTeacherUser(cred.user);
       setIsTeacherAuthorized(ok);
       return true;
-    } catch {
-      setLoginError('Đăng nhập Google chưa hoàn tất. Vui lòng thử lại.');
+    } catch (error) {
+      const mapped = mapAuthErrorToVietnamese(error);
+      setLoginError(
+        mapped || 'Đăng nhập Google chưa hoàn tất. Vui lòng thử lại.'
+      );
       return false;
     }
   };
@@ -318,9 +423,28 @@ export default function App() {
     setTeacherError('');
     setLoginError('');
     await signOut(auth);
+    setIssuedProfile(null);
     setSyncedAttempts([]);
     setCloudSavedExams([]);
+    setIssuedAccounts([]);
+    setShowAdminAccountsModal(false);
     setIsTeacherAuthorized(false);
+  };
+
+  const handleCreateIssuedAccount = async (input: {
+    identifier: string;
+    password: string;
+    displayName: string;
+    role: IssuedAccountRole;
+    studentClass: string;
+  }) => {
+    if (!teacherUser?.uid || !isTeacherAuthorized) {
+      throw new Error('Chỉ quản trị viên mới có quyền cấp tài khoản.');
+    }
+    return createIssuedAccount({
+      ...input,
+      adminUid: teacherUser.uid,
+    });
   };
 
   const handleSaveExam = async (attempt: QuizAttempt) => {
@@ -761,6 +885,7 @@ export default function App() {
           activeView={activeView}
           isQuizActive={Boolean(activeQuiz)}
           user={teacherUser}
+          issuedProfile={issuedProfile}
           isTeacherAuthorized={isTeacherAuthorized}
           onNavigate={handleNavigate}
           onQuickStart15Min={handleQuickStart15Min}
@@ -768,6 +893,7 @@ export default function App() {
             setLoginError('');
             setShowLoginModal(true);
           }}
+          onOpenManageAccounts={() => setShowAdminAccountsModal(true)}
           onSignOut={handleTeacherSignOut}
         />
       )}
@@ -905,6 +1031,7 @@ export default function App() {
             examControl={examControl}
             onTeacherSignIn={handleTeacherSignIn}
             onTeacherSignOut={handleTeacherSignOut}
+            onOpenManageAccounts={() => setShowAdminAccountsModal(true)}
             onEndExam={handleEndExam}
             onReopenExam={handleReopenExam}
             onViewAttempt={(attempt) => {
@@ -1126,8 +1253,21 @@ export default function App() {
         isOpen={showLoginModal}
         errorMessage={loginError}
         onClose={() => setShowLoginModal(false)}
+        onCredentialSignIn={handleCredentialSignIn}
         onGoogleSignIn={handleGeneralSignIn}
       />
+
+      {isTeacherAuthorized && (
+        <AdminAccountsModal
+          isOpen={showAdminAccountsModal}
+          accounts={issuedAccounts}
+          loading={issuedAccountsLoading}
+          onClose={() => setShowAdminAccountsModal(false)}
+          onCreateAccount={handleCreateIssuedAccount}
+          onToggleActive={setIssuedAccountActive}
+          onDeleteAccount={deleteIssuedAccountRecord}
+        />
+      )}
 
       <footer className="mt-12 border-t border-slate-200 bg-white no-print">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-6 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">

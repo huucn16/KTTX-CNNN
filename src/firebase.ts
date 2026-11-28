@@ -1,5 +1,11 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getApps, initializeApp } from 'firebase/app';
+import {
+  createUserWithEmailAndPassword,
+  getAuth,
+  GoogleAuthProvider,
+  signOut,
+  updateProfile,
+} from 'firebase/auth';
 import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -8,6 +14,77 @@ export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
+
+export const ISSUED_ACCOUNT_EMAIL_DOMAIN = 'account.tranvanhuu.edu.vn';
+
+export function normalizeIssuedAccountIdentifier(rawInput: string): {
+  username: string;
+  email: string;
+} {
+  const cleaned = rawInput.trim().toLowerCase().replace(/\s+/g, '');
+  if (!cleaned) {
+    return { username: '', email: '' };
+  }
+  if (cleaned.includes('@')) {
+    return { username: cleaned, email: cleaned };
+  }
+  return {
+    username: cleaned,
+    email: `${cleaned}@${ISSUED_ACCOUNT_EMAIL_DOMAIN}`,
+  };
+}
+
+export async function createProvisionedAuthUser(
+  email: string,
+  password: string,
+  displayName: string
+): Promise<string> {
+  const provisionerApp =
+    getApps().find((item) => item.name === 'admin-provisioner') ??
+    initializeApp(firebaseConfig, 'admin-provisioner');
+  const provisionerAuth = getAuth(provisionerApp);
+  try {
+    const cred = await createUserWithEmailAndPassword(provisionerAuth, email, password);
+    if (displayName.trim()) {
+      await updateProfile(cred.user, { displayName: displayName.trim().slice(0, 100) });
+    }
+    return cred.user.uid;
+  } finally {
+    await signOut(provisionerAuth).catch(() => undefined);
+  }
+}
+
+export function mapAuthErrorToVietnamese(error: unknown): string {
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error
+      ? String((error as { code?: unknown }).code || '')
+      : '';
+
+  switch (code) {
+    case 'auth/operation-not-allowed':
+      return 'Tính năng đăng nhập bằng Tài khoản/Mật khẩu chưa được bật trong Firebase Console (Authentication → Sign-in method → Email/Password).';
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':
+      return 'Tên đăng nhập hoặc mật khẩu không chính xác.';
+    case 'auth/invalid-email':
+      return 'Tên đăng nhập hoặc địa chỉ email không hợp lệ.';
+    case 'auth/email-already-in-use':
+      return 'Tên đăng nhập hoặc email này đã được cấp trước đó.';
+    case 'auth/weak-password':
+      return 'Mật khẩu phải có ít nhất 6 ký tự.';
+    case 'auth/too-many-requests':
+      return 'Thử đăng nhập quá nhiều lần. Vui lòng đợi ít phút rồi thử lại.';
+    case 'auth/user-disabled':
+      return 'Tài khoản này đã bị vô hiệu hóa.';
+    case 'auth/network-request-failed':
+      return 'Lỗi kết nối mạng. Vui lòng kiểm tra Internet và thử lại.';
+    default:
+      return error instanceof Error && error.message
+        ? error.message
+        : 'Không thể xác thực tài khoản. Vui lòng thử lại.';
+  }
+}
 
 export enum OperationType {
   CREATE = 'create',

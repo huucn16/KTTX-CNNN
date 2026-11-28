@@ -105,3 +105,19 @@ export interface QuizAttempt {
   submitReason?: SubmitReason;
   syncStatus?: 'synced' | 'pending' | 'error';
 }
+
+export type IssuedAccountRole = 'student' | 'teacher';
+
+export interface IssuedAccount {
+  uid: string;
+  username: string;
+  email: string;
+  displayName: string;
+  role: IssuedAccountRole;
+  studentClass: string;
+  active: boolean;
+  createdByUid: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
