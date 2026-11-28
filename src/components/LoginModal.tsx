@@ -236,7 +236,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           </button>
 
           <p className="pt-1 text-center text-[11px] leading-relaxed text-slate-500">
-            Học sinh làm bài qua link hoặc mã QR không cần đăng nhập, chỉ cần điền Họ tên và Lớp.
+            Admin chưa có mật khẩu có thể đăng nhập bằng Google rồi mở mục{' '}
+            <strong className="font-semibold text-slate-700">Cấp tài khoản</strong> để đặt mật khẩu
+            Admin. Học sinh mở link hoặc mã QR không cần đăng nhập.
           </p>
         </div>
       </div>

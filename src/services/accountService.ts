@@ -36,12 +36,14 @@ function toIsoString(val: unknown): string {
 }
 
 function mapDocToIssuedAccount(data: Record<string, unknown>, fallbackId: string): IssuedAccount {
+  const role: IssuedAccountRole =
+    data.role === 'admin' ? 'admin' : data.role === 'teacher' ? 'teacher' : 'student';
   return {
     uid: typeof data.uid === 'string' ? data.uid : fallbackId,
     username: typeof data.username === 'string' ? data.username : '',
     email: typeof data.email === 'string' ? data.email : '',
     displayName: typeof data.displayName === 'string' ? data.displayName : 'Người dùng',
-    role: data.role === 'teacher' ? 'teacher' : 'student',
+    role,
     studentClass: typeof data.studentClass === 'string' ? data.studentClass : '',
     active: data.active !== false,
     createdByUid: typeof data.createdByUid === 'string' ? data.createdByUid : '',
@@ -144,7 +146,7 @@ export async function createIssuedAccount(
     handleFirestoreError(error, OperationType.CREATE, accountPath);
   }
 
-  if (input.role === 'teacher') {
+  if (input.role === 'teacher' || input.role === 'admin') {
     const adminPath = `admins/${safeUid}`;
     try {
       await setDoc(doc(db, 'admins', safeUid), {
@@ -188,7 +190,7 @@ export async function setIssuedAccountActive(
     handleFirestoreError(error, OperationType.UPDATE, accountPath);
   }
 
-  if (account.role === 'teacher') {
+  if (account.role === 'teacher' || account.role === 'admin') {
     const adminPath = `admins/${safeUid}`;
     try {
       if (active) {
@@ -209,7 +211,7 @@ export async function setIssuedAccountActive(
 
 export async function deleteIssuedAccountRecord(account: IssuedAccount): Promise<void> {
   const safeUid = sanitizeId(account.uid);
-  if (account.role === 'teacher') {
+  if (account.role === 'teacher' || account.role === 'admin') {
     const adminPath = `admins/${safeUid}`;
     try {
       await deleteDoc(doc(db, 'admins', safeUid));

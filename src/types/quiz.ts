@@ -106,7 +106,7 @@ export interface QuizAttempt {
   syncStatus?: 'synced' | 'pending' | 'error';
 }
 
-export type IssuedAccountRole = 'student' | 'teacher';
+export type IssuedAccountRole = 'student' | 'teacher' | 'admin';
 
 export interface IssuedAccount {
   uid: string;

@@ -1,9 +1,13 @@
 import { getApps, initializeApp } from 'firebase/app';
 import {
   createUserWithEmailAndPassword,
+  EmailAuthProvider,
   getAuth,
   GoogleAuthProvider,
+  linkWithCredential,
+  reauthenticateWithPopup,
   signOut,
+  updatePassword,
   updateProfile,
 } from 'firebase/auth';
 import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
@@ -51,6 +55,44 @@ export async function createProvisionedAuthUser(
     return cred.user.uid;
   } finally {
     await signOut(provisionerAuth).catch(() => undefined);
+  }
+}
+
+export async function setOrUpdateOwnPassword(newPassword: string): Promise<void> {
+  const currentUser = auth.currentUser;
+  if (!currentUser || !currentUser.email) {
+    throw new Error('Bạn cần đăng nhập tài khoản trước khi thiết lập mật khẩu.');
+  }
+  if (newPassword.length < 6) {
+    throw new Error('Mật khẩu phải có ít nhất 6 ký tự.');
+  }
+
+  const hasPasswordProvider = currentUser.providerData.some(
+    (p) => p.providerId === 'password'
+  );
+
+  const applyPassword = async () => {
+    if (hasPasswordProvider) {
+      await updatePassword(currentUser, newPassword);
+    } else {
+      const cred = EmailAuthProvider.credential(currentUser.email!, newPassword);
+      await linkWithCredential(currentUser, cred);
+    }
+  };
+
+  try {
+    await applyPassword();
+  } catch (error) {
+    const code =
+      typeof error === 'object' && error !== null && 'code' in error
+        ? String((error as { code?: unknown }).code || '')
+        : '';
+    if (code === 'auth/requires-recent-login') {
+      await reauthenticateWithPopup(currentUser, googleProvider);
+      await applyPassword();
+      return;
+    }
+    throw error;
   }
 }
 

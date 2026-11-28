@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { User } from 'firebase/auth';
 import {
   AlertCircle,
   Check,
   Copy,
   Eye,
   EyeOff,
+  KeyRound,
   Lock,
   RefreshCw,
   Search,
@@ -19,9 +21,11 @@ import { IssuedAccount, IssuedAccountRole } from '../types/quiz';
 
 interface AdminAccountsModalProps {
   isOpen: boolean;
+  currentUser: User | null;
   accounts: IssuedAccount[];
   loading: boolean;
   onClose: () => void;
+  onSetOwnPassword: (newPassword: string) => Promise<void>;
   onCreateAccount: (input: {
     identifier: string;
     password: string;
@@ -45,11 +49,19 @@ function generateStrongPassword(): string {
   return result;
 }
 
+function getRoleLabel(role: IssuedAccountRole, studentClass?: string): string {
+  if (role === 'admin') return 'Admin';
+  if (role === 'teacher') return 'Giáo viên';
+  return `Học sinh${studentClass ? ` (${studentClass})` : ''}`;
+}
+
 export const AdminAccountsModal: React.FC<AdminAccountsModalProps> = ({
   isOpen,
+  currentUser,
   accounts,
   loading,
   onClose,
+  onSetOwnPassword,
   onCreateAccount,
   onToggleActive,
   onDeleteAccount,
@@ -74,28 +86,36 @@ export const AdminAccountsModal: React.FC<AdminAccountsModalProps> = ({
     password: string;
   } | null>(null);
 
+  const [ownPassword, setOwnPassword] = useState('');
+  const [showOwnPassword, setShowOwnPassword] = useState(false);
+  const [ownPassSubmitting, setOwnPassSubmitting] = useState(false);
+  const [ownPassError, setOwnPassError] = useState('');
+  const [ownPassSuccess, setOwnPassSuccess] = useState('');
+
   useEffect(() => {
     if (!isOpen) return;
     setFormError('');
     setActionError('');
+    setOwnPassError('');
+    setOwnPassSuccess('');
   }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !submitting) {
+      if (e.key === 'Escape' && !submitting && !ownPassSubmitting) {
         onClose();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isOpen, submitting, onClose]);
+  }, [isOpen, submitting, ownPassSubmitting, onClose]);
 
   const filteredAccounts = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return accounts;
     return accounts.filter((acc) => {
-      const hay = `${acc.displayName} ${acc.username} ${acc.email} ${acc.studentClass}`.toLowerCase();
+      const hay = `${acc.displayName} ${acc.username} ${acc.email} ${acc.studentClass} ${acc.role}`.toLowerCase();
       return hay.includes(q);
     });
   }, [accounts, searchQuery]);
@@ -103,6 +123,41 @@ export const AdminAccountsModal: React.FC<AdminAccountsModalProps> = ({
   if (!isOpen) return null;
 
   const previewNormalized = normalizeIssuedAccountIdentifier(identifier);
+  const hasOwnPasswordLinked = Boolean(
+    currentUser?.providerData?.some((p) => p.providerId === 'password')
+  );
+
+  const handleSetOwnPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setOwnPassError('');
+    setOwnPassSuccess('');
+    if (ownPassword.length < 6) {
+      setOwnPassError('Mật khẩu Admin phải có ít nhất 6 ký tự.');
+      return;
+    }
+    setOwnPassSubmitting(true);
+    try {
+      await onSetOwnPassword(ownPassword);
+      setOwnPassSuccess(
+        `Đã lưu mật khẩu cho ${currentUser?.email || 'Admin'}. Bạn có thể dùng email này và mật khẩu vừa đặt để đăng nhập.`
+      );
+      setOwnPassword('');
+    } catch (error) {
+      setOwnPassError(mapAuthErrorToVietnamese(error));
+    } finally {
+      setOwnPassSubmitting(false);
+    }
+  };
+
+  const handlePrefillAdminTemplate = () => {
+    setFormError('');
+    setDisplayName('Trần Văn Hữu');
+    setIdentifier('admin');
+    setRole('admin');
+    setStudentClass('');
+    setPassword(generateStrongPassword());
+    setShowPassword(true);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -158,7 +213,7 @@ export const AdminAccountsModal: React.FC<AdminAccountsModalProps> = ({
     const text = [
       `Thông tin đăng nhập · GVBM: Trần Văn Hữu`,
       `Họ và tên: ${lastIssued.displayName}`,
-      `Vai trò: ${lastIssued.role === 'teacher' ? 'Giáo viên' : `Học sinh (${lastIssued.studentClass})`}`,
+      `Vai trò: ${getRoleLabel(lastIssued.role, lastIssued.studentClass)}`,
       `Tên đăng nhập: ${lastIssued.username}`,
       `Mật khẩu: ${lastIssued.password}`,
     ].join('\n');
@@ -181,17 +236,19 @@ export const AdminAccountsModal: React.FC<AdminAccountsModalProps> = ({
       <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-4">
           <div>
-            <p className="text-xs font-medium text-emerald-800">Quản trị tài khoản · GVBM: Trần Văn Hữu</p>
+            <p className="text-xs font-medium text-emerald-800">
+              Quản trị tài khoản · GVBM: Trần Văn Hữu
+            </p>
             <h2
               id="admin-accounts-title"
               className="mt-0.5 font-display text-lg font-bold text-slate-900 sm:text-xl"
             >
-              Cấp & Quản lý tài khoản đăng nhập
+              Tạo & Quản lý tài khoản Admin / Giáo viên / Học sinh
             </h2>
           </div>
           <button
             type="button"
-            disabled={submitting}
+            disabled={submitting || ownPassSubmitting}
             onClick={onClose}
             aria-label="Đóng quản lý tài khoản"
             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
@@ -200,12 +257,98 @@ export const AdminAccountsModal: React.FC<AdminAccountsModalProps> = ({
           </button>
         </div>
 
+        {/* Own Admin Password Setup Banner */}
+        {currentUser?.email && (
+          <div className="border-b border-slate-200 bg-emerald-50/50 px-6 py-3.5">
+            <form
+              onSubmit={handleSetOwnPasswordSubmit}
+              className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between"
+            >
+              <div className="min-w-0">
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-950">
+                  <KeyRound className="h-3.5 w-3.5 text-emerald-700 shrink-0" aria-hidden="true" />
+                  <span>
+                    {hasOwnPasswordLinked
+                      ? `Đổi mật khẩu đăng nhập cho Admin (${currentUser.email})`
+                      : `Đặt mật khẩu đăng nhập trực tiếp cho Admin (${currentUser.email})`}
+                  </span>
+                </p>
+                <p className="mt-0.5 text-[11px] text-slate-600">
+                  Sau khi đặt mật khẩu, bạn có thể đăng nhập bằng email Admin + mật khẩu mà không
+                  cần bấm Google mỗi lần.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <div className="relative">
+                  <input
+                    type={showOwnPassword ? 'text' : 'password'}
+                    disabled={ownPassSubmitting}
+                    value={ownPassword}
+                    onChange={(e) => setOwnPassword(e.target.value)}
+                    placeholder="Mật khẩu Admin (>= 6 ký tự)"
+                    aria-label="Mật khẩu Admin hiện tại"
+                    className="w-56 rounded-lg border border-slate-300 bg-white py-1.5 pl-3 pr-8 text-xs text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => setShowOwnPassword((p) => !p)}
+                    aria-label={showOwnPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:text-slate-700"
+                  >
+                    {showOwnPassword ? (
+                      <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
+                    ) : (
+                      <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                  </button>
+                </div>
+                <button
+                  type="submit"
+                  disabled={ownPassSubmitting}
+                  className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50 transition-colors"
+                >
+                  {ownPassSubmitting
+                    ? 'Đang lưu...'
+                    : hasOwnPasswordLinked
+                    ? 'Cập nhật mật khẩu'
+                    : 'Tạo mật khẩu Admin'}
+                </button>
+              </div>
+            </form>
+
+            {ownPassError && (
+              <p role="alert" className="mt-2 flex items-center gap-1.5 text-xs font-medium text-rose-700">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span>{ownPassError}</span>
+              </p>
+            )}
+            {ownPassSuccess && (
+              <p role="status" className="mt-2 flex items-center gap-1.5 text-xs font-medium text-emerald-800">
+                <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span>{ownPassSuccess}</span>
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="grid flex-1 grid-cols-1 divide-y divide-slate-200 overflow-y-auto lg:grid-cols-12 lg:divide-x lg:divide-y-0">
           {/* Create Account Form */}
           <section className="p-5 sm:p-6 lg:col-span-5 space-y-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-              <UserPlus className="h-4 w-4 text-emerald-700" aria-hidden="true" />
-              <span>Cấp tài khoản mới</span>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                <UserPlus className="h-4 w-4 text-emerald-700" aria-hidden="true" />
+                <span>Cấp tài khoản mới</span>
+              </div>
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={handlePrefillAdminTemplate}
+                className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-900 hover:bg-emerald-100 transition-colors"
+              >
+                Điền mẫu Admin
+              </button>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-3.5">
@@ -223,7 +366,7 @@ export const AdminAccountsModal: React.FC<AdminAccountsModalProps> = ({
                   disabled={submitting}
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Ví dụ: Nguyễn Minh Anh"
+                  placeholder="Ví dụ: Trần Văn Hữu hoặc Nguyễn Minh Anh"
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none"
                 />
               </div>
@@ -242,7 +385,7 @@ export const AdminAccountsModal: React.FC<AdminAccountsModalProps> = ({
                   disabled={submitting}
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
-                  placeholder="Ví dụ: hs11a2_01 hoặc gv_anh@truong.edu.vn"
+                  placeholder="Ví dụ: admin, gv01 hoặc hs11a2_01"
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none"
                 />
                 {previewNormalized.username && (
@@ -319,6 +462,7 @@ export const AdminAccountsModal: React.FC<AdminAccountsModalProps> = ({
                   >
                     <option value="student">Học sinh</option>
                     <option value="teacher">Giáo viên</option>
+                    <option value="admin">Admin (Quản trị)</option>
                   </select>
                 </div>
 
@@ -333,10 +477,10 @@ export const AdminAccountsModal: React.FC<AdminAccountsModalProps> = ({
                     id="issue-class"
                     type="text"
                     maxLength={30}
-                    disabled={submitting || role === 'teacher'}
-                    value={role === 'teacher' ? '' : studentClass}
+                    disabled={submitting || role !== 'student'}
+                    value={role !== 'student' ? '' : studentClass}
                     onChange={(e) => setStudentClass(e.target.value)}
-                    placeholder={role === 'teacher' ? 'Không bắt buộc' : 'VD: 11A2'}
+                    placeholder={role !== 'student' ? 'Không bắt buộc' : 'VD: 11A2'}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none disabled:bg-slate-50"
                   />
                 </div>
@@ -388,6 +532,12 @@ export const AdminAccountsModal: React.FC<AdminAccountsModalProps> = ({
                 </div>
                 <div className="space-y-0.5 font-mono-tabular text-[11px] text-slate-700">
                   <p>
+                    Vai trò:{' '}
+                    <strong className="text-slate-900">
+                      {getRoleLabel(lastIssued.role, lastIssued.studentClass)}
+                    </strong>
+                  </p>
+                  <p>
                     Tài khoản: <strong className="text-slate-900">{lastIssued.username}</strong>
                   </p>
                   <p>
@@ -395,7 +545,8 @@ export const AdminAccountsModal: React.FC<AdminAccountsModalProps> = ({
                   </p>
                 </div>
                 <p className="text-[11px] text-emerald-800">
-                  Vui lòng sao chép ngay để gửi cho người dùng. Hệ thống không lưu lại mật khẩu gốc.
+                  Vui lòng sao chép ngay để lưu hoặc gửi cho người dùng. Hệ thống không lưu lại mật
+                  khẩu gốc.
                 </p>
               </div>
             )}
@@ -442,7 +593,7 @@ export const AdminAccountsModal: React.FC<AdminAccountsModalProps> = ({
               ) : filteredAccounts.length === 0 ? (
                 <div className="p-8 text-center text-xs text-slate-500">
                   {accounts.length === 0
-                    ? 'Chưa có tài khoản nào được cấp. Sử dụng biểu mẫu bên cạnh để tạo tài khoản mới.'
+                    ? 'Chưa có tài khoản nào được cấp. Nhấn "Điền mẫu Admin" hoặc nhập thông tin bên cạnh để tạo tài khoản mới.'
                     : 'Không tìm thấy tài khoản phù hợp.'}
                 </div>
               ) : (
@@ -461,12 +612,16 @@ export const AdminAccountsModal: React.FC<AdminAccountsModalProps> = ({
                             </span>
                             <span
                               className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                                acc.role === 'teacher'
+                                acc.role === 'admin'
+                                  ? 'bg-emerald-700 text-white'
+                                  : acc.role === 'teacher'
                                   ? 'bg-emerald-100 text-emerald-800'
                                   : 'bg-sky-100 text-sky-800'
                               }`}
                             >
-                              {acc.role === 'teacher'
+                              {acc.role === 'admin'
+                                ? 'Admin'
+                                : acc.role === 'teacher'
                                 ? 'Giáo viên'
                                 : `HS${acc.studentClass ? ` · ${acc.studentClass}` : ''}`}
                             </span>

@@ -41,8 +41,13 @@ export const Header: React.FC<HeaderProps> = ({
     user?.email?.split('@')[0] ||
     'Tài khoản';
 
+  const isPrimaryAdminEmail =
+    user?.email?.toLowerCase() === 'huucn16@gmail.com' && Boolean(user?.emailVerified);
+
   const roleLabel = isTeacherAuthorized
-    ? 'Giáo viên'
+    ? issuedProfile?.role === 'admin' || isPrimaryAdminEmail
+      ? 'Admin'
+      : 'Giáo viên'
     : issuedProfile?.studentClass
     ? `HS · ${issuedProfile.studentClass}`
     : 'Học sinh';

@@ -13,6 +13,7 @@ import {
   googleProvider,
   mapAuthErrorToVietnamese,
   normalizeIssuedAccountIdentifier,
+  setOrUpdateOwnPassword,
 } from './firebase';
 import { AdminAccountsModal } from './components/AdminAccountsModal';
 import { Header } from './components/Header';
@@ -1260,9 +1261,11 @@ export default function App() {
       {isTeacherAuthorized && (
         <AdminAccountsModal
           isOpen={showAdminAccountsModal}
+          currentUser={teacherUser}
           accounts={issuedAccounts}
           loading={issuedAccountsLoading}
           onClose={() => setShowAdminAccountsModal(false)}
+          onSetOwnPassword={setOrUpdateOwnPassword}
           onCreateAccount={handleCreateIssuedAccount}
           onToggleActive={setIssuedAccountActive}
           onDeleteAccount={deleteIssuedAccountRecord}
